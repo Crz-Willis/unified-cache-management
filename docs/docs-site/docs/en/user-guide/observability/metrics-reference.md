@@ -250,6 +250,69 @@ For slow loads, inspect queuing, batch-get, backend waits and H2D. For slow save
 | `ucm:mooncake_dump_backend_submit_duration_ms` | Time to submit a backend Dump after the D2H archival copy             |
 | `ucm:mooncake_dump_backend_wait_duration_ms`   | Time waiting for backend archival to complete                         |
 
+### 1.6 ASU / KV metrics
+
+ASU forwards these 37 KV metrics (23 Counters and 14 Histograms) into the UCM collector. Names below use the default `ucm:` prefix. Submission counts describe KV API calls and entries, not unique inference requests or successful asynchronous completions.
+
+**Units:** all `kv_*_duration_seconds` observations and bucket boundaries are in seconds. Existing `*_duration_ms` metrics, `save_duration` and `save_completion_wait_duration` use milliseconds. Multiply a KV duration mean or quantile by `1000` when displaying milliseconds; do not combine seconds and milliseconds without conversion.
+
+The two `kv_transport_node_task_*` histograms retain `node_id` in standalone mode. The UCM adapter aggregates their observations across nodes and does not expose that node label; other exporter labels still apply.
+
+#### Installation switches
+
+In both Direct and HMA connector paths, ASU adapter installation requires the top-level `enable_metrics` switch (default `true`), a nonempty effective metrics configuration, at least one enabled consumer (`vllm_connector` or `multiproc`), and the store-level `ucm_connectors[].ucm_connector_config.enable_metrics` switch (default `true`). The built-in configuration enables `vllm_connector`; a custom `consumers` mapping with both consumers disabled prevents installation. Store-level `true` cannot override a disabled global or consumer gate. Custom catalogs must also contain the KV definitions to collect these metrics.
+
+To opt out of installation for an ASU store, add `enable_metrics: false` beside `store_pipeline: "ASU"` in its existing `ucm_connector_config`. This setting controls installation, not per-store filtering or shutdown: the backend is process-wide, and setting it to `false` does not uninstall a backend already installed by another store. Direct C++ callers only have the store installation switch and must arrange UCM metric registration and draining themselves.
+
+#### Counters
+
+| Metric | Unit | Description |
+| --- | --- | --- |
+| `ucm:kv_client_query_requests_total` | count | Total KV client query submissions |
+| `ucm:kv_client_query_entries_total` | keys / entries | Total keys submitted to KV client query |
+| `ucm:kv_client_query_errors_total` | count | Total failed KV client query submissions |
+| `ucm:kv_client_load_requests_total` | count | Total KV client load submissions |
+| `ucm:kv_client_load_entries_total` | keys / entries | Total entries submitted to KV client load |
+| `ucm:kv_client_load_errors_total` | count | Total failed KV client load submissions |
+| `ucm:kv_client_store_requests_total` | count | Total KV client store submissions |
+| `ucm:kv_client_store_entries_total` | keys / entries | Total entries submitted to KV client store |
+| `ucm:kv_client_store_errors_total` | count | Total failed KV client store submissions |
+| `ucm:kv_client_batch_load_requests_total` | count | Total KV client batch-load submissions |
+| `ucm:kv_client_batch_load_entries_total` | keys / entries | Total entries submitted to KV client batch-load |
+| `ucm:kv_client_batch_load_errors_total` | count | Total failed KV client batch-load submissions |
+| `ucm:kv_client_batch_store_requests_total` | count | Total KV client batch-store submissions |
+| `ucm:kv_client_batch_store_entries_total` | keys / entries | Total entries submitted to KV client batch-store |
+| `ucm:kv_client_batch_store_errors_total` | count | Total failed KV client batch-store submissions |
+| `ucm:kv_client_delete_requests_total` | count | Total KV client delete submissions |
+| `ucm:kv_client_delete_entries_total` | keys / entries | Total keys submitted to KV client delete |
+| `ucm:kv_client_delete_errors_total` | count | Total failed KV client delete submissions |
+| `ucm:kv_client_wait_requests_total` | count | Total KV client wait calls |
+| `ucm:kv_client_wait_errors_total` | count | Total failed KV client wait calls |
+| `ucm:kv_transport_task_completion_timeouts_total` | count | Total KV transport task completion timeouts |
+| `ucm:kv_transport_task_io_timeouts_total` | count | Total KV transport sub-batch IO timeouts |
+| `ucm:kv_transport_task_connection_errors_total` | count | Total KV transport connection errors |
+
+#### Histograms
+
+| Metric | Unit | Description |
+| --- | --- | --- |
+| `ucm:kv_client_task_enqueue_duration_seconds` | seconds | KV client API-to-enqueue duration |
+| `ucm:kv_client_task_queue_duration_seconds` | seconds | KV client task queue duration |
+| `ucm:kv_client_task_process_duration_seconds` | seconds | KV client task processing duration |
+| `ucm:kv_client_task_send_duration_seconds` | seconds | KV client duration until all Send calls return |
+| `ucm:kv_client_task_e2e_duration_seconds` | seconds | KV client task end-to-end duration |
+| `ucm:kv_transport_task_pre_send_duration_seconds` | seconds | KV transport duration before Send |
+| `ucm:kv_transport_task_queue_duration_seconds` | seconds | KV transport task queue duration |
+| `ucm:kv_transport_task_process_duration_seconds` | seconds | KV transport task processing duration |
+| `ucm:kv_transport_task_send_duration_seconds` | seconds | KV transport duration until Send returns |
+| `ucm:kv_transport_task_send_call_duration_seconds` | seconds | KV transport provider Send call duration |
+| `ucm:kv_transport_task_completion_duration_seconds` | seconds | KV transport completion duration after Send |
+| `ucm:kv_transport_node_task_send_duration_seconds` | seconds | KV transport node task send duration; standalone labels by node_id, UCM aggregates across nodes |
+| `ucm:kv_transport_node_task_completion_duration_seconds` | seconds | KV transport node task completion duration; standalone labels by node_id, UCM aggregates across nodes |
+| `ucm:kv_transport_task_e2e_duration_seconds` | seconds | KV transport task end-to-end duration from submit to completion |
+
+For definition synchronization and custom catalog validation, see [metrics development](../../developer-guide/add-metrics.md).
+
 ## 2. Raw Metrics Usage
 
 Run the PromQL examples in Prometheus or against a Prometheus data source in Grafana. They assume the scrape job is named `vllm`; change `job` to match your deployment. If a job contains several models or services, add label filters before aggregating. Examples use the last five minutes; in Grafana, `[5m]` can be replaced with `[$__rate_interval]`.

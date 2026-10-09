@@ -36,6 +36,7 @@
 #include <string>
 #include <utility>
 #include "kv_client.h"
+#include "kv_metrics/ucm_metrics_adapter.h"
 #include "logger/logger.h"
 #include "ucmstore_v1.h"
 
@@ -255,6 +256,8 @@ public:
 
     ~AsuStore() override
     {
+        // Stop this client's writers, but retain the worker-wide metrics backend.
+        // Other stores (and later recreations) may still use its cached bindings.
         if (client_) {
             auto status = client_->Shutdown();
             if (!status.ok()) { UC_ERROR("Failed to shutdown ASU client: {}.", status.message); }
@@ -267,6 +270,13 @@ public:
         NormalizeAsuShardConfig(config);
         auto status = CheckConfig(config);
         if (status.Failure()) { return status; }
+
+        if (config.enableMetrics) {
+            std::string error;
+            if (!kv::metrics::EnsureUcmKvMetricsInstalled(&error)) {
+                return Status::Error("Failed to install ASU metrics backend: " + error);
+            }
+        }
 
         tensorLayout_ = ParseTensorLayout(config.tensorLayout);
         config_ = std::move(config);
@@ -442,6 +452,7 @@ private:
     Config ParseConfig(const Detail::Dictionary& inConfig)
     {
         Config config;
+        inConfig.Get("enable_metrics", config.enableMetrics);
         inConfig.Get("asu_mode", config.mode);
         inConfig.Get("asu_config_path", config.configPath);
         inConfig.Get("asu_client_id", config.clientId);

@@ -14,7 +14,7 @@
 
 ## 定义一个指标
 
-运行时自定义指标写入实际使用的指标 YAML；向默认集合添加指标时，同步更新 `examples/metrics/metrics_configs.yaml` 和 `ucm/default_metrics_config.py`，保留两者一致。现有 `test_default_metrics_config_matches_example_yaml` 用例检查这一关系。
+运行时自定义指标写入实际使用的指标 YAML；向默认集合添加非 KV 指标时，同步更新 `examples/metrics/metrics_configs.yaml` 和 `ucm/default_metrics_config.py`，保留两者一致。现有 `test_default_metrics_config_matches_example_yaml` 用例检查这一关系。KV 指标使用下述生成流程。
 
 以下片段展示定义格式，需放入完整指标配置中：
 
@@ -35,6 +35,27 @@ histogram:
 ```
 
 Counter 更新正增量，Gauge 更新当前值，Histogram 更新一次观测。桶边界按升序配置，注册时按需补充 `+Inf`。为一个指标固定事件范围和单位；接口调用次数、传输分片和用户请求数不能互换。
+
+## 生成和校验 KV 指标
+
+KV 指标定义以 `kv_semantics/metrics/config/kv_metrics.yaml` 为源。修改该文件后，在仓库根目录执行：
+
+```bash
+python kv_semantics/metrics/tools/generate_kv_metrics.py --sync-ucm
+python kv_semantics/metrics/tools/generate_kv_metrics.py --check
+```
+
+`--sync-ucm` 更新 `kv_semantics/metrics/include/kv_metrics/default_metric_descriptors.h`，以及 `examples/metrics/metrics_configs.yaml` 和 `ucm/default_metrics_config.py` 中的 `BEGIN/END GENERATED KV` 标记块。源文件与三个输出应一起提交，不要直接编辑生成块。`--check` 只检查、不写文件；任一输出过期时返回非零退出码，CI 的 `metrics-python-tests` 会执行此检查。
+
+部署使用自定义指标目录时，同步其中的 KV 定义，再单独校验该目录（需要 PyYAML）：
+
+```bash
+python kv_semantics/metrics/tools/generate_kv_metrics.py --ucm-config /etc/ucm/metrics_configs.yaml
+```
+
+参数应指向指标目录，而非顶层服务配置。此只读检查要求每个 KV 指标恰好定义一次，类型、documentation 文本和直方图桶均精确匹配；允许额外的自定义指标。因此，描述文本的修改也需要同步到部署目录。`--ucm-config` 不能与 `--check` 或 `--sync-ucm` 同时使用，请分别运行。桶值使用 `0.00001` 这样的不带引号的十进制数；YAML 1.1 可能把 `1e-5` 解析成字符串。
+
+KV 耗时直方图使用**秒**，观测值与桶边界应保持这一单位；看板显示毫秒时，将均值或分位数乘以 `1000`。standalone 的节点任务直方图保留 `node_id`，UCM adapter 则跨节点聚合。完整指标目录及全局、consumer、store 安装开关见[指标参考](../user-guide/observability/metrics-reference.md)中的“ASU / KV 指标”。
 
 ## 在操作完成处更新
 

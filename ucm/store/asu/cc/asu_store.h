@@ -11,6 +11,7 @@
 namespace UC::AsuStore {
 
 struct Config {
+    bool enableMetrics{true};
     std::string mode{"client"};
     std::string configPath;
     std::string clientId{"ucm-asu-store"};

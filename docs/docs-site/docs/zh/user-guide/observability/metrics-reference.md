@@ -250,6 +250,69 @@ Mooncake 指标用于判断**数据是否由 Mooncake 提供、是否下探后�
 | `ucm:mooncake_dump_backend_submit_duration_ms` | D2H 归档复制后向后端提交 Dump 的时长 |
 | `ucm:mooncake_dump_backend_wait_duration_ms` | 等待后端归档完成的时长 |
 
+### 1.6 ASU / KV 指标
+
+ASU 将以下 37 个 KV 指标（23 个 Counter、14 个 Histogram）接入 UCM 采集器。表中名称使用默认 `ucm:` 前缀。提交计数反映 KV API 调用及条目数量，不代表去重后的推理请求数，也不代表异步任务成功完成数。
+
+**单位：**所有 `kv_*_duration_seconds` 的观测值和桶边界均使用秒；已有的 `*_duration_ms`、`save_duration` 和 `save_completion_wait_duration` 使用毫秒。看板显示 KV 耗时的毫秒值时，将均值或分位数乘以 `1000`，不要直接混合秒与毫秒数据。
+
+两个 `kv_transport_node_task_*` 直方图在 standalone 模式下保留 `node_id`。UCM adapter 将其观测值跨节点聚合，不暴露该节点标签；其他导出标签仍按各自路径生效。
+
+#### 安装开关
+
+Direct 和 HMA connector 安装 ASU adapter 的条件相同：顶层 `enable_metrics` 开启（默认 `true`）、有效指标配置非空、至少一个 consumer（`vllm_connector` 或 `multiproc`）启用，且 store 级 `ucm_connectors[].ucm_connector_config.enable_metrics` 开启（默认 `true`）。内置配置启用 `vllm_connector`；自定义 `consumers` 将两个 consumer 都关闭时不会安装。store 级 `true` 不能覆盖全局或 consumer 的关闭状态。自定义指标目录还需包含 KV 定义，才能采集这些指标。
+
+若要让某个 ASU store 不触发安装，在其已有的 `ucm_connector_config` 中、与 `store_pipeline: "ASU"` 同级添加 `enable_metrics: false`。该键控制安装，不是逐 store 的数据过滤或关闭开关：backend 是进程级的，设为 `false` 不会卸载其他 store 已安装的 backend。直接调用 C++ 的使用者只有 store 安装开关，需自行安排 UCM 指标注册和数据读取。
+
+#### Counters
+
+| 指标 | 单位 | 含义 |
+| --- | --- | --- |
+| `ucm:kv_client_query_requests_total` | 次 | KV client query 提交次数 |
+| `ucm:kv_client_query_entries_total` | 键 / 条目 | 提交给 query 的键数量 |
+| `ucm:kv_client_query_errors_total` | 次 | KV client query 提交失败次数 |
+| `ucm:kv_client_load_requests_total` | 次 | KV client load 提交次数 |
+| `ucm:kv_client_load_entries_total` | 键 / 条目 | 提交给 load 的条目数量 |
+| `ucm:kv_client_load_errors_total` | 次 | KV client load 提交失败次数 |
+| `ucm:kv_client_store_requests_total` | 次 | KV client store 提交次数 |
+| `ucm:kv_client_store_entries_total` | 键 / 条目 | 提交给 store 的条目数量 |
+| `ucm:kv_client_store_errors_total` | 次 | KV client store 提交失败次数 |
+| `ucm:kv_client_batch_load_requests_total` | 次 | KV client batch-load 提交次数 |
+| `ucm:kv_client_batch_load_entries_total` | 键 / 条目 | 提交给 batch-load 的条目数量 |
+| `ucm:kv_client_batch_load_errors_total` | 次 | KV client batch-load 提交失败次数 |
+| `ucm:kv_client_batch_store_requests_total` | 次 | KV client batch-store 提交次数 |
+| `ucm:kv_client_batch_store_entries_total` | 键 / 条目 | 提交给 batch-store 的条目数量 |
+| `ucm:kv_client_batch_store_errors_total` | 次 | KV client batch-store 提交失败次数 |
+| `ucm:kv_client_delete_requests_total` | 次 | KV client delete 提交次数 |
+| `ucm:kv_client_delete_entries_total` | 键 / 条目 | 提交给 delete 的键数量 |
+| `ucm:kv_client_delete_errors_total` | 次 | KV client delete 提交失败次数 |
+| `ucm:kv_client_wait_requests_total` | 次 | KV client wait 调用次数 |
+| `ucm:kv_client_wait_errors_total` | 次 | KV client wait 失败次数 |
+| `ucm:kv_transport_task_completion_timeouts_total` | 次 | KV transport 任务完成等待超时次数 |
+| `ucm:kv_transport_task_io_timeouts_total` | 次 | KV transport 子批次 IO 超时次数 |
+| `ucm:kv_transport_task_connection_errors_total` | 次 | KV transport 连接错误次数 |
+
+#### Histograms
+
+| 指标 | 单位 | 含义 |
+| --- | --- | --- |
+| `ucm:kv_client_task_enqueue_duration_seconds` | 秒 | KV client 从 API 调用到入队的耗时 |
+| `ucm:kv_client_task_queue_duration_seconds` | 秒 | KV client 任务排队耗时 |
+| `ucm:kv_client_task_process_duration_seconds` | 秒 | KV client 任务处理耗时 |
+| `ucm:kv_client_task_send_duration_seconds` | 秒 | KV client 到所有 Send 调用返回的耗时 |
+| `ucm:kv_client_task_e2e_duration_seconds` | 秒 | KV client 任务端到端耗时 |
+| `ucm:kv_transport_task_pre_send_duration_seconds` | 秒 | KV transport 发送前耗时 |
+| `ucm:kv_transport_task_queue_duration_seconds` | 秒 | KV transport 任务排队耗时 |
+| `ucm:kv_transport_task_process_duration_seconds` | 秒 | KV transport 任务处理耗时 |
+| `ucm:kv_transport_task_send_duration_seconds` | 秒 | KV transport 到 Send 返回的耗时 |
+| `ucm:kv_transport_task_send_call_duration_seconds` | 秒 | KV transport provider Send 调用耗时 |
+| `ucm:kv_transport_task_completion_duration_seconds` | 秒 | KV transport 在 Send 后等待完成的耗时 |
+| `ucm:kv_transport_node_task_send_duration_seconds` | 秒 | KV transport 节点任务发送耗时；standalone 按 node_id 区分，UCM 跨节点聚合 |
+| `ucm:kv_transport_node_task_completion_duration_seconds` | 秒 | KV transport 节点任务完成耗时；standalone 按 node_id 区分，UCM 跨节点聚合 |
+| `ucm:kv_transport_task_e2e_duration_seconds` | 秒 | KV transport 任务从提交到完成的端到端耗时 |
+
+KV 定义同步与自定义目录校验见[指标开发](../../developer-guide/add-metrics.md)。
+
 ## 2. 原始指标的使用
 
 下面的 PromQL 可在 Prometheus 查询页或 Grafana 的 Prometheus 数据源中执行，假设抓取任务名为 `vllm`。按实际部署替换 `job`；一个任务包含多个模型或服务时，先加标签筛选再聚合。示例统一使用最近 5 分钟，Grafana 中可将 `[5m]` 换成 `[$__rate_interval]`。

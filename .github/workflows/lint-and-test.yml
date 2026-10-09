@@ -87,6 +87,24 @@ jobs:
       with:
         extra_args: --all-files --hook-stage manual
 
+  metrics-python-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install test dependencies
+      run: python -m pip install pytest PyYAML
+    - name: Test KV metrics generator
+      run: python -m pytest -q kv_semantics/metrics/tests
+    - name: Test connector metrics
+      # These tests provide their own dependency stubs. The integration-test
+      # conftest requires GPU tooling and must not be loaded by this CPU job.
+      run: python -m pytest --noconftest -q test/test_ucm_connector_metrics.py
+    - name: Check generated metrics definitions
+      run: python kv_semantics/metrics/tools/generate_kv_metrics.py --check
+
   cpp_gtest:
     runs-on: ubuntu-latest
     env:

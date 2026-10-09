@@ -50,6 +50,7 @@ from ucm.metrics_config import (
     consumer_enabled,
     get_vllm_connector_metric_definitions,
     load_launch_metrics_config,
+    metrics_enabled,
     setup_ucm_metrics,
 )
 from ucm.metrics_dispatcher import get_metrics_dispatcher
@@ -75,6 +76,13 @@ if TYPE_CHECKING:
 from ucm.sparse.state import has_ucm_sparse
 
 logger = init_logger(__name__)
+
+
+def _should_setup_ucm_metrics(effective_config: Optional[dict[str, Any]]) -> bool:
+    return bool(effective_config) and (
+        consumer_enabled(effective_config, MULTIPROC_CONSUMER)
+        or consumer_enabled(effective_config, VLLM_CONNECTOR_CONSUMER)
+    )
 
 
 def _has_shared_indexer_layers(vllm_config: "VllmConfig") -> bool:
@@ -1587,6 +1595,12 @@ class UCMDirectConnector(KVConnectorBase_V1):
         # (before store creation) if the tmpfs cannot hold it.
         _check_shm_capacity(int(config["cache_buffer_capacity_gb"]))
 
+    def _asu_metrics_enabled(self, store_config: dict[str, Any]) -> bool:
+        # Match the outer connector's setup gate, while honoring the store switch.
+        return metrics_enabled(store_config) and _should_setup_ucm_metrics(
+            load_launch_metrics_config(self.launch_config)
+        )
+
     def _create_store(
         self,
         kv_cache_layout: Optional[KVCacheLayout],
@@ -1602,6 +1616,8 @@ class UCMDirectConnector(KVConnectorBase_V1):
         name = self.connector_configs[0]["ucm_connector_name"]
         module_path = self.connector_configs[0].get("ucm_connector_module_path", None)
         config = copy.deepcopy(self.connector_configs[0]["ucm_connector_config"])
+        if config.get("store_pipeline") == "ASU":
+            config["enable_metrics"] = self._asu_metrics_enabled(config)
         config.setdefault("share_buffer_enable", self.is_mla)
         self._set_default_shm_buffer_capacity(config)
         if "storage_backends" in config:
@@ -3408,10 +3424,7 @@ class UCMConnector(KVConnectorBase_V1, SupportsHMA):
 
         metrics_config_path = self.launch_config.get("metrics_config_path", "")
         self.metrics_config = load_launch_metrics_config(self.launch_config)
-        if self.metrics_config and (
-            consumer_enabled(self.metrics_config, MULTIPROC_CONSUMER)
-            or consumer_enabled(self.metrics_config, VLLM_CONNECTOR_CONSUMER)
-        ):
+        if _should_setup_ucm_metrics(self.metrics_config):
             setup_ucm_metrics(self.metrics_config)
             self._metrics_dispatcher = get_metrics_dispatcher(self.metrics_config)
         if (

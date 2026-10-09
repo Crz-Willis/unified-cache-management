@@ -45,7 +45,7 @@ python kv_semantics/metrics/tools/generate_kv_metrics.py --sync-ucm
 python kv_semantics/metrics/tools/generate_kv_metrics.py --check
 ```
 
-`--sync-ucm` 更新 `kv_semantics/metrics/include/kv_metrics/default_metric_descriptors.h`，以及 `examples/metrics/metrics_configs.yaml` 和 `ucm/default_metrics_config.py` 中的 `BEGIN/END GENERATED KV` 标记块。源文件与三个输出应一起提交，不要直接编辑生成块。`--check` 只检查、不写文件；任一输出过期时返回非零退出码。
+`--sync-ucm` 更新 `kv_semantics/metrics/include/kv_metrics/default_metric_descriptors.h`，以及 `examples/metrics/metrics_configs.yaml` 和 `ucm/default_metrics_config.py` 中的 `BEGIN/END GENERATED KV` 标记块。源文件与三个输出应一起提交，不要直接编辑生成块。`--check` 只检查、不写文件；任一输出过期时返回非零退出码，CI 的 `metrics-python-tests` 会执行此检查。
 
 新增、删除 KV 指标或修改其类型时，还需同步修改中英文 `metrics-reference.md` 和 `docs/source/user-guide/metrics/metrics_list.md` 中的 KV 表格与数量摘要。`--check` 会拒绝遗漏、重复、已删除或类型分组错误的 KV 行，以及过期的数量摘要。旧版参考文档中的全局数量会与完整 Python 默认配置比较，包括非 KV 指标。翻译说明和单位仍需人工审核；`--sync-ucm` 不会重写文档。请先更新这些文档，再执行最后的 `--check`。
 

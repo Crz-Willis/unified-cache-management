@@ -45,7 +45,7 @@ python kv_semantics/metrics/tools/generate_kv_metrics.py --sync-ucm
 python kv_semantics/metrics/tools/generate_kv_metrics.py --check
 ```
 
-`--sync-ucm` updates `kv_semantics/metrics/include/kv_metrics/default_metric_descriptors.h` and the `BEGIN/END GENERATED KV` blocks in both `examples/metrics/metrics_configs.yaml` and `ucm/default_metrics_config.py`. Commit the source and all three outputs together; do not edit the generated blocks directly. `--check` is read-only and exits nonzero if any output is stale.
+`--sync-ucm` updates `kv_semantics/metrics/include/kv_metrics/default_metric_descriptors.h` and the `BEGIN/END GENERATED KV` blocks in both `examples/metrics/metrics_configs.yaml` and `ucm/default_metrics_config.py`. Commit the source and all three outputs together; do not edit the generated blocks directly. `--check` is read-only and exits nonzero if any output is stale; the `metrics-python-tests` CI job runs it.
 
 When adding, removing, or changing the type of a KV metric, also update the KV table and count summary in the English and Chinese `metrics-reference.md` files and `docs/source/user-guide/metrics/metrics_list.md`. `--check` rejects missing, duplicate, obsolete, or incorrectly grouped KV rows and stale summaries. The legacy reference's overall catalog counts are checked against the complete Python defaults, including non-KV metrics. Translated descriptions and units remain manually reviewed; `--sync-ucm` does not rewrite documentation. Update these documents before running the final `--check`.
 

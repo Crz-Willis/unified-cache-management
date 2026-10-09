@@ -285,7 +285,7 @@ python kv_semantics/metrics/tools/generate_kv_metrics.py --sync-ucm
 python kv_semantics/metrics/tools/generate_kv_metrics.py --check
 ```
 
-Commit the source, generated C++ descriptor header, and generated KV blocks in `examples/metrics/metrics_configs.yaml` and `ucm/default_metrics_config.py` together. `--check` detects stale outputs without writing files.
+Commit the source, generated C++ descriptor header, and generated KV blocks in `examples/metrics/metrics_configs.yaml` and `ucm/default_metrics_config.py` together. `--check` detects stale outputs without writing files and runs in the `metrics-python-tests` CI job.
 
 When adding, removing, or changing the type of a KV metric, also update its table row and count summary in both language versions of `metrics-reference.md` and this file. `--check` rejects missing, duplicate, obsolete, or incorrectly grouped KV rows and stale count summaries. The default catalog totals above are checked against all metric lists in `ucm/default_metrics_config.py`, including non-KV metrics. Descriptions and units still require manual review; `--sync-ucm` does not overwrite documentation.
 

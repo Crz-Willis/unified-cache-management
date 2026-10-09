@@ -258,6 +258,7 @@ GRAFANA_VLLM_UCM_TAG = "ucm-vllm-connector-metrics"
 GRAFANA_UCM_DASHBOARDS = [
     "grafana_connector.json",
     "grafana_store.json",
+    "grafana_ucm_kv_client.json",
 ]
 CONNECTOR_INTERFACE_METHODS = {
     "get_block_size",
@@ -2042,6 +2043,86 @@ def test_ucm_dashboards_reference_configured_vllm_connector_metrics():
         )
 
 
+def test_ucm_kv_dashboard_matches_exported_series_and_node_aggregation():
+    metrics_dir = REPO_ROOT / "examples" / "metrics"
+    dashboard = json.loads(
+        (metrics_dir / "grafana_ucm_kv_client.json").read_text(encoding="utf-8")
+    )
+    standalone = json.loads(
+        (metrics_dir / "grafana_kv_client.json").read_text(encoding="utf-8")
+    )
+    assert dashboard["uid"] != standalone["uid"]
+    assert len({panel["id"] for panel in dashboard["panels"]}) == len(
+        dashboard["panels"]
+    )
+    connector = json.loads(
+        (metrics_dir / "grafana_connector.json").read_text(encoding="utf-8")
+    )
+    # Discover models before KVClient series exist, just as the Connector does.
+    assert dashboard["templating"] == connector["templating"]
+
+    node_metrics = set()
+    for panel in dashboard["panels"]:
+        for target in panel.get("targets", []):
+            expr = target["expr"]
+            assert not re.search(r"(?<![\w:])kv:", expr)
+            assert not re.search(r"\b(node_id|source|worker_id)\b", expr)
+            assert 'job=~"$job"' in expr
+            # All must not also select the multiproc consumer's unlabeled series.
+            assert 'worker_rank!=""' in expr
+            assert "${perWorker:raw}" in expr
+            if "_duration_seconds" in expr:
+                assert panel["fieldConfig"]["defaults"]["unit"] == "s"
+            if "histogram_quantile(" in expr:
+                assert "sum by (le, ${perWorker:raw})" in expr
+            if "kv_transport_node_task_" in expr:
+                assert "pooled" in panel["description"]
+                node_metrics.update(
+                    re.findall(r"kv_transport_node_task_\w+_duration_seconds", expr)
+                )
+    assert node_metrics == {
+        "kv_transport_node_task_send_duration_seconds",
+        "kv_transport_node_task_completion_duration_seconds",
+    }
+
+
+def test_ucm_kv_dashboard_totals_select_only_submission_operations():
+    metrics_dir = REPO_ROOT / "examples" / "metrics"
+    dashboard = json.loads(
+        (metrics_dir / "grafana_ucm_kv_client.json").read_text(encoding="utf-8")
+    )
+    panels = {panel["title"]: panel for panel in dashboard["panels"]}
+    for title, suffix in [
+        ("Total Request Rate", "requests_total"),
+        ("Entry / Key Throughput", "entries_total"),
+    ]:
+        expr = panels[title]["targets"][0]["expr"]
+        # Union individually labeled rates, so missing operations do not erase
+        # active ones and rate's removal of metric names cannot merge operations.
+        assert expr.startswith("sum by (${perWorker:raw}) (")
+        parts = expr.removeprefix("sum by (${perWorker:raw}) (")[:-1].split(" or ")
+        assert len(parts) == 6
+        operations = set()
+        for part in parts:
+            match = re.fullmatch(
+                r"label_replace\(rate\(ucm:kv_client_(\w+)_"
+                + suffix
+                + r'\{[^}]+\}\[\$__rate_interval\]\), "operation", "(\w+)", "", ""\)',
+                part,
+            )
+            assert match is not None
+            assert match[1] == match[2]
+            operations.add(match[1])
+        assert operations == {
+            "store",
+            "load",
+            "batch_store",
+            "batch_load",
+            "query",
+            "delete",
+        }
+
+
 def test_vllm_dashboard_uses_combined_prefix_cache_hit_rate_breakdown():
     dashboard = json.loads(
         (REPO_ROOT / "examples" / "metrics" / "grafana_vllm.json").read_text(
@@ -2247,6 +2328,10 @@ def test_grafana_dashboards_use_isolated_vllm_ucm_identity():
         "grafana_vllm.json": (
             "vLLM (UCM Metrics)",
             "ucm-vllm-overview",
+        ),
+        "grafana_ucm_kv_client.json": (
+            "ucm-kv-client Metrics",
+            "ucm-kv-client-metrics",
         ),
     }
     old_uids = {

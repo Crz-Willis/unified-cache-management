@@ -145,6 +145,37 @@ UCM 提供这些仪表板：
 | `examples/metrics/grafana_vllm.json` | vLLM 请求延迟、令牌吞吐量、调度器状态和缓存状态 |
 | `examples/metrics/grafana_store.json` | Store 查找、加载、写出、带宽和缓存活动 |
 | `examples/metrics/grafana_connector.json` | Connector 查找/加载/保存请求计数、块计数、持续时间、吞吐量和错误 |
+| `examples/metrics/grafana_ucm_kv_client.json` | UCM KVClient 请求/Key 速率、各阶段耗时和错误，支持整体及 Worker 视图 |
+
+### 通过 UCM 查看 KVClient 性能
+
+看板标题为 `ucm-kv-client Metrics`，沿用独立看板 `kv-client Metrics` 的命名方式，
+并添加 UCM 前缀加以区分。模型发现和筛选控件与 Connector 看板保持一致，
+均从 `ucm:*` 指标中发现 job、模型、Engine 和 Worker。
+模型可能在 KVClient 指标出现前就显示在列表中；面板需要带有非空 `worker_rank` 的
+`ucm:kv_*` 指标才能展示数据。
+
+ASU Store 使用 UCM metrics backend 时，导入 `grafana_ucm_kv_client.json`。
+保持 `enable_metrics: true`（默认值），启用 `vllm_connector` consumer，并使用内置指标配置，
+或在自定义配置中保留需要的 `kv_*` Counter 和 Histogram。发送实际访问 ASU Store 的推理请求后，
+检查 vLLM 的 `/metrics` 端点是否出现 `ucm:kv_*` 指标。
+
+导入后，选择 Prometheus 数据源、目标 vLLM 的抓取 `job` 和 `model_name`。
+**View** 支持 **Aggregated**（按模型汇总）和 **Per Worker**
+（按 `model_name`、`engine`、`worker_rank` 分开展示）；两种视图均受 Engine 和 Worker 筛选条件影响。
+比较 Worker 时，应选择目标部署的 job：所选目标中具有相同 Engine/Worker 标签的序列会被合并。
+看板使用默认前缀 `vllm_connector_prefix: "ucm:"`；若自定义前缀，需要同时修改面板查询和变量查询。
+
+看板包含请求/Key 速率、Client/Transport 各阶段耗时、端到端耗时和错误统计。
+Node-task Send/Completion 面板汇总每个 Worker 内所有节点的样本；
+UCM 不导出 `node_id`，这些面板不能定位具体节点。平均值按样本数加权，
+分位数在合并直方图桶后计算。耗时单位为秒，Key 速率不是字节带宽，请求提交速率也不是成功完成速率。
+
+原 `grafana_kv_client.json` 继续用于 standalone backend（`kv:` 前缀，
+`source`、`worker_id`、`node_id` 标签）。新看板适配 vLLM connector consumer，
+不适配 multiproc consumer，并排除缺少 `worker_rank` 的序列。
+若面板无数据，检查前缀、所选 job/model、指标启用列表以及相应 ASU 路径是否实际执行。
+速率查询至少需要两次 Prometheus 抓取，耗时分位数需要实际观测样本。
 
 ## 用终端查看指标
 

@@ -157,6 +157,45 @@ UCM provides these dashboards:
 | `examples/metrics/grafana_vllm.json` | vLLM request latency, token throughput, scheduler state, and cache state |
 | `examples/metrics/grafana_store.json` | Store lookup, load, dump, bandwidth, and cache activity |
 | `examples/metrics/grafana_connector.json` | Connector Lookup/Load/Save request counts, block counts, durations, throughput, and errors |
+| `examples/metrics/grafana_ucm_kv_client.json` | UCM KVClient request/key rates, stage latency, and errors, with aggregate and per-Worker views |
+
+### KVClient performance through UCM
+
+The dashboard title is `ucm-kv-client Metrics`, following the standalone
+`kv-client Metrics` naming convention with a UCM prefix. Like the Connector
+dashboard, it discovers jobs, models, Engines, and Workers from `ucm:*` series
+and uses the same selection controls.
+A model can appear before KVClient series are available; panels require
+`ucm:kv_*` series with a non-empty `worker_rank`.
+
+Use `grafana_ucm_kv_client.json` for an ASU Store using the UCM metrics backend.
+Keep `enable_metrics: true` (the default), enable the `vllm_connector` consumer,
+and use the built-in metrics configuration or a custom configuration containing the
+required `kv_*` counters and histograms. Run inference requests that exercise the
+ASU Store, then check the vLLM endpoint for `ucm:kv_*` series.
+
+After importing the dashboard, select the Prometheus data source, the intended
+vLLM scrape `job`, and `model_name`. **View** switches between **Aggregated**
+(model-level) and **Per Worker** (`model_name`, `engine`, `worker_rank`);
+the Engine and Worker filters apply in both views. Select one deployment's job
+when comparing Workers: identical Engine/Worker labels across selected targets
+are combined. The dashboard uses the default `vllm_connector_prefix: "ucm:"`;
+if you customize that prefix, update both panel queries and variable queries.
+
+The dashboard includes request/key rates, client/transport stages, end-to-end
+latency, and error statistics. Node-task Send/Completion panels pool samples from
+all nodes within each Worker. UCM does not export `node_id`, so these panels do
+not identify individual nodes. Averages are weighted by sample count and
+percentiles are calculated from merged histogram buckets. Durations are in
+seconds; key rates are not byte bandwidth, and submission rates are not successful
+completion rates.
+
+`grafana_kv_client.json` remains the standalone backend dashboard (`kv:` prefix,
+`source`/`worker_id`/`node_id` labels). The new dashboard targets the vLLM
+connector consumer, not the multiproc consumer, and excludes series without
+`worker_rank`. If panels show no data, check the prefix, selected job/model,
+metric enable-list, and whether the relevant ASU code path has run. Allow at least
+two Prometheus scrapes for rate queries; latency quantiles need observed samples.
 
 ## Inspect metrics from a terminal
 

@@ -369,6 +369,7 @@ def _install_stubs():
         "ucm.integration.vllm.device",
         create_device=lambda *args, **kwargs: None,
         get_current_device_id=lambda: 0,
+        get_ucm_worker_torch_device=lambda local_rank: f"cuda:{local_rank}",
     )
     _install_module("ucm.logger", init_logger=lambda name: _Logger())
     _install_module(
@@ -2616,7 +2617,9 @@ def test_hybrid_layerwise_records_save_bytes_once():
 
     connector = object.__new__(UCMHybridLinearAttentionLayerWiseConnector)
     connector.is_save = True
-    connector._dump_transfer_data = ([], [], {"req-1"}, {})
+    connector._dump_transfer_data = ([], [], {}, {"req-1"})
+    connector._connector_metadata = None
+    connector.commit_row_id = 0
     connector.row_ids = []
     connector.dump_tasks = {}
     connector._layerwise_save_bytes = 896
@@ -2891,6 +2894,7 @@ def test_fawa_records_submitted_save_bytes():
     connector._get_connector_metadata = lambda: metadata
     connector.fa_store = object()
     connector.wa_store = object()
+    connector.window_group_ids = [1]
     connector._poll_completed_dump_tasks = lambda: None
     connector.tp_size = 1
     connector.tp_rank = 0

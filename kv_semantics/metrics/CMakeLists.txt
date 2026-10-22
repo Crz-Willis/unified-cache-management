@@ -25,7 +25,7 @@ else()
     add_custom_target(kv_metrics_config_check DEPENDS kv_metrics_codegen)
 endif()
 
-add_library(kv_metrics SHARED src/metrics.cc)
+add_library(kv_metrics SHARED src/metrics.cc src/resource_metrics.cc)
 
 target_include_directories(kv_metrics
     PUBLIC

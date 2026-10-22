@@ -277,6 +277,7 @@ def _asu_pipeline_builder(
     config: Dict[str, object], pipeline: ucmpipelinestore.PipelineStore
 ):
     store_dir = Path(__file__).resolve().parent.parent
+    _preload_metrics(store_dir)
     pipeline.Stack("Asu", str(store_dir / "asu/libasustore.so"), config)
 
 

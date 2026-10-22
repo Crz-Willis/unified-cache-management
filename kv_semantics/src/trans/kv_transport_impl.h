@@ -60,6 +60,7 @@ public:
 private:
     Status SubmitTask(const TransportTaskPtr& task);
     void WorkerLoop();
+    metrics::ResourceCapacity queueCapacity_{metrics::Resource::TransportQueue};
     void CompletionLoop();
 
     void SetTransProvider(std::shared_ptr<TransProvider> provider);

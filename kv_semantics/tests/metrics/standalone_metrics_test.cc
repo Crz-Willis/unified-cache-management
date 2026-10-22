@@ -128,7 +128,12 @@ public:
             recordedUpdates[recordedCount++] = updates[index];
         }
     }
-    std::array<MetricUpdate, 4> recordedUpdates{};
+    std::size_t Count(const std::string& name) const
+    {
+        return std::count_if(recordedUpdates.begin(), recordedUpdates.begin() + recordedCount,
+                             [&](const auto& update) { return update.metric->Name() == name; });
+    }
+    std::array<MetricUpdate, 128> recordedUpdates{};
     std::size_t recordedCount{0};
 };
 
@@ -366,7 +371,7 @@ TEST(ClientTaskMetricsTest, RecordsSubmitToCompletionOnce)
     ::kv::ClientTaskManager::Finalize(task);
     ::kv::ClientTaskManager::Finalize(task);
 
-    ASSERT_EQ(backend->recordedCount, 1U);
+    ASSERT_EQ(backend->Count("kv_client_task_e2e_duration_seconds"), 1U);
     EXPECT_EQ(backend->recordedUpdates[0].metric->Name(), "kv_client_task_e2e_duration_seconds");
     EXPECT_GT(backend->recordedUpdates[0].value, 0.004);
     EXPECT_TRUE(task->Done());
@@ -384,7 +389,7 @@ TEST(TransportTaskMetricsTest, RecordsSubmitToCompletion)
     ::kv::TransportTaskManager manager;
     manager.NotifyCompletion(task);
 
-    ASSERT_EQ(backend->recordedCount, 1U);
+    ASSERT_EQ(backend->Count("kv_transport_task_e2e_duration_seconds"), 1U);
     EXPECT_EQ(backend->recordedUpdates[0].metric->Name(), "kv_transport_task_e2e_duration_seconds");
     EXPECT_GT(backend->recordedUpdates[0].value, 0.004);
     Shutdown();
@@ -412,11 +417,9 @@ TEST(TransportTaskMetricsTest, PreSendFailureDoesNotRecordSendCompletion)
 
     ::kv::TransportTaskManager manager;
     manager.NotifyCompletion(task);
-    EXPECT_EQ(backend->recordedCount, 1U);
-    if (backend->recordedCount != 0) {
-        EXPECT_EQ(backend->recordedUpdates[0].metric->Name(),
-                  "kv_transport_task_e2e_duration_seconds");
-    }
+    EXPECT_EQ(backend->Count("kv_transport_task_e2e_duration_seconds"), 1U);
+    EXPECT_EQ(backend->Count("kv_transport_task_completion_duration_seconds"), 0U);
+    EXPECT_EQ(backend->Count("kv_transport_prepare_failures_total"), 1U);
     Shutdown();
 }
 
@@ -442,7 +445,7 @@ TEST(ClientTaskMetricsTest, UndispatchedChildDoesNotNotifySendCompletion)
     EXPECT_FALSE(sendCompleteNotified);
     EXPECT_EQ(task->remainingTransportSendTasks.load(), 1U);
     EXPECT_TRUE(task->Done());
-    EXPECT_EQ(backend->recordedCount, 1U);
+    EXPECT_EQ(backend->Count("kv_client_task_e2e_duration_seconds"), 1U);
     if (backend->recordedCount != 0) {
         EXPECT_EQ(backend->recordedUpdates[0].metric->Name(),
                   "kv_client_task_e2e_duration_seconds");

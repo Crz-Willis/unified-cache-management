@@ -35,6 +35,7 @@
 #include "logger.h"
 #include "router/config.h"
 #include "router/router.h"
+#include "task_metrics.h"
 #include "utils/config_utils.h"
 
 namespace kv {
@@ -175,6 +176,7 @@ Status KvClientImpl::Init(const KvClientConfig& config)
     }
 
     taskQueue_.Setup(queueDepth + 1);
+    queueCapacity_.Set(queueDepth);
     stopWorker_.store(false, std::memory_order_release);
     worker_ = std::thread(&KvClientImpl::WorkerLoop, this);
     snapshot_ = std::move(nextSnapshot);
@@ -197,6 +199,7 @@ Status KvClientImpl::Shutdown()
     workerCv_.notify_one();
     JoinBackgroundRefresh();
     if (worker_.joinable()) { worker_.join(); }
+    queueCapacity_.Set(0);
 
     std::shared_ptr<ViewSnapshot> snapshot;
     std::vector<std::shared_ptr<AsuTransport>> retiredTransports;
@@ -478,12 +481,18 @@ Status KvClientImpl::SubmitAsync(AsuOpType opType, const std::vector<KVBuffer>& 
         }
         enqueuedAt = std::chrono::steady_clock::now();
         rawCtx->enqueuedAt = enqueuedAt;
+        rawCtx->queueLease.Acquire();
+        rawCtx->inflightLease.Acquire();
         if (!taskQueue_.TryPush(std::move(rawCtx))) {
+            rawCtx->queueLease.Release();
+            rawCtx->inflightLease.Release();
+            metrics::UpdateStats(KV_METRIC("kv_client_queue_full_total"), 1.0);
             (void)taskManager_.Remove(taskId);
             taskId = kInvalidTaskId;
             return Status::Error(StatusCode::RESOURCE_BUSY, "client task queue is full");
         }
     }
+    RecordSubmittedBytes(opType, entries);
     workerCv_.notify_one();
     metrics::UpdateStats(KV_METRIC("kv_client_task_enqueue_duration_seconds"),
                          std::chrono::duration<double>(enqueuedAt - taskStart).count());
@@ -533,7 +542,12 @@ Status KvClientImpl::SubmitAsync(AsuOpType opType, const std::vector<CacheKey>& 
         }
         enqueuedAt = std::chrono::steady_clock::now();
         rawCtx->enqueuedAt = enqueuedAt;
+        rawCtx->queueLease.Acquire();
+        rawCtx->inflightLease.Acquire();
         if (!taskQueue_.TryPush(std::move(rawCtx))) {
+            rawCtx->queueLease.Release();
+            rawCtx->inflightLease.Release();
+            metrics::UpdateStats(KV_METRIC("kv_client_queue_full_total"), 1.0);
             (void)taskManager_.Remove(taskId);
             taskId = kInvalidTaskId;
             return Status::Error(StatusCode::RESOURCE_BUSY, "client task queue is full");
@@ -551,13 +565,22 @@ void KvClientImpl::WorkerLoop()
     const auto deviceId = config_.transportConfigs.front().deviceId;
     const auto deviceStatus = deviceId >= 0 ? device.Setup(deviceId) : Status::OK();
     auto processTask = [this, &deviceStatus](ClientTaskPtr ctx) {
+        ctx->queueLease.Release();
         ctx->processingStartedAt = std::chrono::steady_clock::now();
         metrics::UpdateStats(
             KV_METRIC("kv_client_task_queue_duration_seconds"),
             std::chrono::duration<double>(ctx->processingStartedAt - ctx->enqueuedAt).count());
         auto status = deviceStatus;
         if (status.ok() && ctx->prerequisiteEventHandle != 0) {
+            const auto timer = metrics::StartMetricTimer();
             status = runtime::SynchronizeEvent(ctx->prerequisiteEventHandle);
+            if (const auto elapsed = metrics::ElapsedSeconds(timer)) {
+                metrics::UpdateStats(KV_METRIC("kv_client_prerequisite_wait_duration_seconds"),
+                                     *elapsed);
+            }
+            if (!status.ok()) {
+                metrics::UpdateStats(KV_METRIC("kv_client_prerequisite_errors_total"), 1.0);
+            }
         }
         if (status.ok()) {
             status = taskManager_.Process(ctx);

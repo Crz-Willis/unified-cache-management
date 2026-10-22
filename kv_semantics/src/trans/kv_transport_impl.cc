@@ -156,6 +156,7 @@ Status AsuTransportImpl::Init(const TransportConfig& config,
         return status;
     }
     auto queueDepth = std::max<std::size_t>(2, static_cast<std::size_t>(config_.maxInflightTasks));
+    queueCapacity_.Set(queueDepth);
     executeQueue_.Setup(queueDepth + 1);
     stopWorker_.store(false, std::memory_order_release);
     stopCompletionWorker_.store(false, std::memory_order_release);
@@ -175,6 +176,7 @@ Status AsuTransportImpl::Shutdown()
     workerCv_.notify_one();
 
     if (worker_.joinable()) { worker_.join(); }
+    queueCapacity_.Set(0);
 
     if (completionWorker_.joinable() && config_.timeoutMs != 0) {
         bool hasInflightTask = false;
@@ -266,7 +268,12 @@ Status AsuTransportImpl::SubmitTask(const TransportTaskPtr& task)
         return Status::Error(StatusCode::INTERNAL_ERROR, "transport task disappeared after submit");
     }
 
+    submittedTask->queueLease.Acquire();
+    submittedTask->inflightLease.Acquire();
     if (!executeQueue_.TryPush(std::move(submittedTask))) {
+        submittedTask->queueLease.Release();
+        submittedTask->inflightLease.Release();
+        metrics::UpdateStats(KV_METRIC("kv_transport_queue_full_total"), 1.0);
         taskManager_.Remove(taskId);
         task->taskId = kInvalidTaskId;
         return Status::Error(StatusCode::RESOURCE_BUSY, "transport task queue is full");
@@ -279,6 +286,7 @@ void AsuTransportImpl::WorkerLoop()
 {
     executeQueue_.ConsumerLoop(stopWorker_, producerMu_, workerCv_, [this](TransportTaskPtr task) {
         if (!task) { return; }
+        task->queueLease.Release();
         if (taskExecutor_->Execute(task)) { taskManager_.NotifyCompletion(task); }
     });
 }

@@ -33,6 +33,7 @@
 #include <mutex>
 #include <vector>
 #include "kv_metrics/metrics.h"
+#include "kv_metrics/resource_metrics.h"
 #include "kv_types.h"
 #include "trans_types.h"
 
@@ -86,6 +87,9 @@ using TransportSubBatchList = std::vector<TransportSubBatchContext>;
 
 struct TransportTask {
     TransportTask();
+    metrics::ResourceLease queueLease{metrics::Resource::TransportQueue};
+    metrics::ResourceLease inflightLease{metrics::Resource::TransportTasks};
+    std::atomic<bool> completionMetricRecorded{false};
 
     NodeId nodeId{0};
     TaskId taskId{kInvalidTaskId};
@@ -123,6 +127,8 @@ struct TransportTask {
 using TransportTaskPtr = std::shared_ptr<TransportTask>;
 
 struct ClientTask {
+    metrics::ResourceLease queueLease{metrics::Resource::ClientQueue};
+    metrics::ResourceLease inflightLease{metrics::Resource::ClientTasks};
     TaskId taskId{kInvalidTaskId};
     AsuOpType opType{AsuOpType::LOAD};
     std::uintptr_t prerequisiteEventHandle{0};

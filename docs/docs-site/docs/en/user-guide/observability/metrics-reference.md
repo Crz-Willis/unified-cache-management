@@ -252,13 +252,13 @@ For slow loads, inspect queuing, batch-get, backend waits and H2D. For slow save
 
 ### 1.6 ASU / KV metrics
 
-The shared KV catalog defines 37 KV metrics (23 Counters and 14 Histograms). Names below use the default `ucm:` prefix.
+The shared KV catalog defines 137 KV metrics (97 Counters, 10 Gauges, and 30 Histograms). Names below use the default `ucm:` prefix.
 
-These entries describe the registered metric definitions. Exporting KVClient observations through UCM additionally requires runtime backend integration.
+ASU uses the shared UCM metrics configuration and consumer setup; there is no ASU-specific Store metrics switch. The adapter forwards only registered metrics and silently skips uninitialized collection or omitted definitions. UCM aggregates node observations by metric name; standalone retains the `node_id` label. Resource Gauges aggregate all instances in the process and are sampled once per second. The resource reporter starts when a configured resource Gauge is detected during Store setup or a subsequent native observation. The collector is process-wide; a disabled connector does not undo another connector's initialization.
 
 The generator's `--check` validates KV table names, type sections, duplicates, omissions, and counts in the English, Chinese, and legacy references. Descriptions and units remain manually maintained; `--sync-ucm` does not rewrite these tables.
 
-**Units:** all `kv_*_duration_seconds` observations and bucket boundaries are in seconds. Existing `*_duration_ms` metrics, `save_duration` and `save_completion_wait_duration` use milliseconds. Multiply a KV duration mean or quantile by `1000` when displaying milliseconds; do not combine seconds and milliseconds without conversion.
+**Units:** all `kv_*_duration_seconds` and `asu_*_duration_seconds` observations and bucket boundaries are in seconds. Existing `*_duration_ms` metrics, `save_duration` and `save_completion_wait_duration` use milliseconds. Multiply a KV duration mean or quantile by `1000` when displaying milliseconds; do not combine seconds and milliseconds without conversion.
 
 #### Counters
 
@@ -287,6 +287,95 @@ The generator's `--check` validates KV table names, type sections, duplicates, o
 | `ucm:kv_transport_task_completion_timeouts_total` | count | Total KV transport task completion timeouts |
 | `ucm:kv_transport_task_io_timeouts_total` | count | Total KV transport sub-batch IO timeouts |
 | `ucm:kv_transport_task_connection_errors_total` | count | Total KV transport connection errors |
+| `ucm:kv_client_query_tasks_succeeded_total` | count | Final succeeded KV client query tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_query_tasks_failed_total` | count | Final failed KV client query tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_query_tasks_canceled_total` | count | Final canceled KV client query tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_load_tasks_succeeded_total` | count | Final succeeded KV client load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_load_tasks_failed_total` | count | Final failed KV client load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_load_tasks_canceled_total` | count | Final canceled KV client load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_store_tasks_succeeded_total` | count | Final succeeded KV client store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_store_tasks_failed_total` | count | Final failed KV client store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_store_tasks_canceled_total` | count | Final canceled KV client store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_batch_load_tasks_succeeded_total` | count | Final succeeded KV client batch_load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_batch_load_tasks_failed_total` | count | Final failed KV client batch_load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_batch_load_tasks_canceled_total` | count | Final canceled KV client batch_load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_batch_store_tasks_succeeded_total` | count | Final succeeded KV client batch_store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_batch_store_tasks_failed_total` | count | Final failed KV client batch_store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_batch_store_tasks_canceled_total` | count | Final canceled KV client batch_store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_delete_tasks_succeeded_total` | count | Final succeeded KV client delete tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_delete_tasks_failed_total` | count | Final failed KV client delete tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_delete_tasks_canceled_total` | count | Final canceled KV client delete tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_query_tasks_succeeded_total` | count | Final succeeded KV transport query tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_query_tasks_failed_total` | count | Final failed KV transport query tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_query_tasks_canceled_total` | count | Final canceled KV transport query tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_load_tasks_succeeded_total` | count | Final succeeded KV transport load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_load_tasks_failed_total` | count | Final failed KV transport load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_load_tasks_canceled_total` | count | Final canceled KV transport load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_store_tasks_succeeded_total` | count | Final succeeded KV transport store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_store_tasks_failed_total` | count | Final failed KV transport store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_store_tasks_canceled_total` | count | Final canceled KV transport store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_batch_load_tasks_succeeded_total` | count | Final succeeded KV transport batch_load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_batch_load_tasks_failed_total` | count | Final failed KV transport batch_load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_batch_load_tasks_canceled_total` | count | Final canceled KV transport batch_load tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_batch_store_tasks_succeeded_total` | count | Final succeeded KV transport batch_store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_batch_store_tasks_failed_total` | count | Final failed KV transport batch_store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_batch_store_tasks_canceled_total` | count | Final canceled KV transport batch_store tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_delete_tasks_succeeded_total` | count | Final succeeded KV transport delete tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_delete_tasks_failed_total` | count | Final failed KV transport delete tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_delete_tasks_canceled_total` | count | Final canceled KV transport delete tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_keep_alive_tasks_succeeded_total` | count | Final succeeded KV transport keep_alive tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_keep_alive_tasks_failed_total` | count | Final failed KV transport keep_alive tasks; recorded once, not submit or wait calls |
+| `ucm:kv_transport_keep_alive_tasks_canceled_total` | count | Final canceled KV transport keep_alive tasks; recorded once, not submit or wait calls |
+| `ucm:kv_client_query_entries_succeeded_total` | keys / entries | Final succeeded entries in completed KV client query tasks; query misses are valid results |
+| `ucm:kv_client_query_entries_failed_total` | keys / entries | Final failed entries in completed KV client query tasks; query misses are valid results |
+| `ucm:kv_client_load_entries_succeeded_total` | keys / entries | Final succeeded entries in completed KV client load tasks; query misses are valid results |
+| `ucm:kv_client_load_entries_failed_total` | keys / entries | Final failed entries in completed KV client load tasks; query misses are valid results |
+| `ucm:kv_client_load_submitted_bytes_total` | bytes | Payload bytes of accepted KV client load submissions |
+| `ucm:kv_client_load_completed_bytes_total` | bytes | Successfully completed KV client load payload bytes; partial failures counted per entry |
+| `ucm:kv_client_store_entries_succeeded_total` | keys / entries | Final succeeded entries in completed KV client store tasks; query misses are valid results |
+| `ucm:kv_client_store_entries_failed_total` | keys / entries | Final failed entries in completed KV client store tasks; query misses are valid results |
+| `ucm:kv_client_store_submitted_bytes_total` | bytes | Payload bytes of accepted KV client store submissions |
+| `ucm:kv_client_store_completed_bytes_total` | bytes | Successfully completed KV client store payload bytes; partial failures counted per entry |
+| `ucm:kv_client_batch_load_entries_succeeded_total` | keys / entries | Final succeeded entries in completed KV client batch_load tasks; query misses are valid results |
+| `ucm:kv_client_batch_load_entries_failed_total` | keys / entries | Final failed entries in completed KV client batch_load tasks; query misses are valid results |
+| `ucm:kv_client_batch_load_submitted_bytes_total` | bytes | Payload bytes of accepted KV client batch_load submissions |
+| `ucm:kv_client_batch_load_completed_bytes_total` | bytes | Successfully completed KV client batch_load payload bytes; partial failures counted per entry |
+| `ucm:kv_client_batch_store_entries_succeeded_total` | keys / entries | Final succeeded entries in completed KV client batch_store tasks; query misses are valid results |
+| `ucm:kv_client_batch_store_entries_failed_total` | keys / entries | Final failed entries in completed KV client batch_store tasks; query misses are valid results |
+| `ucm:kv_client_batch_store_submitted_bytes_total` | bytes | Payload bytes of accepted KV client batch_store submissions |
+| `ucm:kv_client_batch_store_completed_bytes_total` | bytes | Successfully completed KV client batch_store payload bytes; partial failures counted per entry |
+| `ucm:kv_client_delete_entries_succeeded_total` | keys / entries | Final succeeded entries in completed KV client delete tasks; query misses are valid results |
+| `ucm:kv_client_delete_entries_failed_total` | keys / entries | Final failed entries in completed KV client delete tasks; query misses are valid results |
+| `ucm:kv_client_prerequisite_errors_total` | count | Failed prerequisite event waits |
+| `ucm:kv_client_wait_timeouts_total` | count | Client wait deadline expirations; not transport execution timeouts |
+| `ucm:kv_client_queue_full_total` | count | Rejected client submissions due to a full queue |
+| `ucm:kv_transport_queue_full_total` | count | Rejected transport submissions due to a full queue |
+| `ucm:kv_transport_send_buffer_exhaustions_total` | count | Send buffer allocations rejected because no slot is free |
+| `ucm:kv_transport_flag_buffer_exhaustions_total` | count | Flag buffer allocations rejected because no slot is free |
+| `ucm:kv_transport_send_failed_subbatches_total` | count | Sub-batches rejected by provider Send or invalid Send result count |
+| `ucm:kv_transport_prepare_failures_total` | count | Transport tasks failing request preparation before connection selection |
+| `ucm:kv_transport_response_parse_errors_total` | count | Sub-batches with an invalid response |
+| `ucm:kv_transport_cqe_internal_errors_total` | count | Sub-batches returning CQE internal error |
+| `ucm:kv_transport_cqe_other_errors_total` | count | Other failed CQE sub-batches excluding IO timeout and internal error |
+| `ucm:kv_client_query_hit_keys_total` | keys / entries | Hit keys in successfully completed client query tasks |
+| `ucm:kv_client_query_miss_keys_total` | keys / entries | Miss keys in successfully completed client query tasks; excludes failed queries |
+| `ucm:asu_lookup_timeout_fallback_total` | count | ASU lookup timeouts converted to cache misses |
+| `ucm:asu_build_kv_buffers_errors_total` | count | ASU buffer descriptor conversion failures before KV submission |
+
+#### Gauges
+
+| Metric | Unit | Description |
+| --- | --- | --- |
+| `ucm:kv_client_queue_depth` | count | Process-wide aggregate kv client queue depth; sampled by a single writer every second |
+| `ucm:kv_transport_queue_depth` | count | Process-wide aggregate kv transport queue depth; sampled by a single writer every second |
+| `ucm:kv_client_queue_capacity` | count | Process-wide aggregate kv client queue capacity; sampled by a single writer every second |
+| `ucm:kv_transport_queue_capacity` | count | Process-wide aggregate kv transport queue capacity; sampled by a single writer every second |
+| `ucm:kv_client_tasks_inflight` | count | Process-wide aggregate kv client tasks inflight; sampled by a single writer every second |
+| `ucm:kv_transport_tasks_inflight` | count | Process-wide aggregate kv transport tasks inflight; sampled by a single writer every second |
+| `ucm:kv_transport_send_buffer_slots_used` | slots | Process-wide aggregate kv transport send buffer slots used; sampled by a single writer every second |
+| `ucm:kv_transport_send_buffer_slots_capacity` | slots | Process-wide aggregate kv transport send buffer slots capacity; sampled by a single writer every second |
+| `ucm:kv_transport_flag_buffer_slots_used` | slots | Process-wide aggregate kv transport flag buffer slots used; sampled by a single writer every second |
+| `ucm:kv_transport_flag_buffer_slots_capacity` | slots | Process-wide aggregate kv transport flag buffer slots capacity; sampled by a single writer every second |
 
 #### Histograms
 
@@ -306,6 +395,22 @@ The generator's `--check` validates KV table names, type sections, duplicates, o
 | `ucm:kv_transport_node_task_send_duration_seconds` | seconds | KV transport node task send duration; standalone labels by node_id |
 | `ucm:kv_transport_node_task_completion_duration_seconds` | seconds | KV transport node task completion duration; standalone labels by node_id |
 | `ucm:kv_transport_task_e2e_duration_seconds` | seconds | KV transport task end-to-end duration from submit to completion |
+| `ucm:kv_client_query_task_e2e_duration_seconds` | seconds | KV client query submit-to-completion duration including failed tasks |
+| `ucm:kv_client_load_task_e2e_duration_seconds` | seconds | KV client load submit-to-completion duration including failed tasks |
+| `ucm:kv_client_store_task_e2e_duration_seconds` | seconds | KV client store submit-to-completion duration including failed tasks |
+| `ucm:kv_client_batch_load_task_e2e_duration_seconds` | seconds | KV client batch_load submit-to-completion duration including failed tasks |
+| `ucm:kv_client_batch_store_task_e2e_duration_seconds` | seconds | KV client batch_store submit-to-completion duration including failed tasks |
+| `ucm:kv_client_delete_task_e2e_duration_seconds` | seconds | KV client delete submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_query_task_e2e_duration_seconds` | seconds | KV transport query submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_load_task_e2e_duration_seconds` | seconds | KV transport load submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_store_task_e2e_duration_seconds` | seconds | KV transport store submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_batch_load_task_e2e_duration_seconds` | seconds | KV transport batch_load submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_batch_store_task_e2e_duration_seconds` | seconds | KV transport batch_store submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_delete_task_e2e_duration_seconds` | seconds | KV transport delete submit-to-completion duration including failed tasks |
+| `ucm:kv_transport_keep_alive_task_e2e_duration_seconds` | seconds | KV transport keep_alive submit-to-completion duration including failed tasks |
+| `ucm:kv_client_prerequisite_wait_duration_seconds` | seconds | Time spent waiting for the prerequisite event |
+| `ucm:asu_build_kv_buffers_duration_seconds` | seconds | ASU buffer descriptor conversion duration including failures |
+| `ucm:kv_client_query_prefix_hit_keys` | keys / entries | Prefix hit key count for successful query tasks |
 
 For definition synchronization and custom catalog validation, see [metrics development](../../developer-guide/add-metrics.md).
 

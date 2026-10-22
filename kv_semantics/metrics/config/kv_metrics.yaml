@@ -1,4 +1,4 @@
-# Standalone defaults; embedded in default_metric_descriptors.h at build time.
+# Shared source for standalone and UCM catalogs. Run generate_kv_metrics.py --sync-ucm.
 metric_prefix: "kv:"
 
 counter:
@@ -25,19 +25,121 @@ counter:
   - {name: "kv_transport_task_completion_timeouts_total", documentation: "Total KV transport task completion timeouts"}
   - {name: "kv_transport_task_io_timeouts_total", documentation: "Total KV transport sub-batch IO timeouts"}
   - {name: "kv_transport_task_connection_errors_total", documentation: "Total KV transport connection errors"}
+  - {name: "kv_client_query_tasks_succeeded_total", documentation: "Final succeeded KV client query tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_query_tasks_failed_total", documentation: "Final failed KV client query tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_query_tasks_canceled_total", documentation: "Final canceled KV client query tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_load_tasks_succeeded_total", documentation: "Final succeeded KV client load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_load_tasks_failed_total", documentation: "Final failed KV client load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_load_tasks_canceled_total", documentation: "Final canceled KV client load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_store_tasks_succeeded_total", documentation: "Final succeeded KV client store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_store_tasks_failed_total", documentation: "Final failed KV client store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_store_tasks_canceled_total", documentation: "Final canceled KV client store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_batch_load_tasks_succeeded_total", documentation: "Final succeeded KV client batch_load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_batch_load_tasks_failed_total", documentation: "Final failed KV client batch_load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_batch_load_tasks_canceled_total", documentation: "Final canceled KV client batch_load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_batch_store_tasks_succeeded_total", documentation: "Final succeeded KV client batch_store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_batch_store_tasks_failed_total", documentation: "Final failed KV client batch_store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_batch_store_tasks_canceled_total", documentation: "Final canceled KV client batch_store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_delete_tasks_succeeded_total", documentation: "Final succeeded KV client delete tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_delete_tasks_failed_total", documentation: "Final failed KV client delete tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_delete_tasks_canceled_total", documentation: "Final canceled KV client delete tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_query_tasks_succeeded_total", documentation: "Final succeeded KV transport query tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_query_tasks_failed_total", documentation: "Final failed KV transport query tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_query_tasks_canceled_total", documentation: "Final canceled KV transport query tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_load_tasks_succeeded_total", documentation: "Final succeeded KV transport load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_load_tasks_failed_total", documentation: "Final failed KV transport load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_load_tasks_canceled_total", documentation: "Final canceled KV transport load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_store_tasks_succeeded_total", documentation: "Final succeeded KV transport store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_store_tasks_failed_total", documentation: "Final failed KV transport store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_store_tasks_canceled_total", documentation: "Final canceled KV transport store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_batch_load_tasks_succeeded_total", documentation: "Final succeeded KV transport batch_load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_batch_load_tasks_failed_total", documentation: "Final failed KV transport batch_load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_batch_load_tasks_canceled_total", documentation: "Final canceled KV transport batch_load tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_batch_store_tasks_succeeded_total", documentation: "Final succeeded KV transport batch_store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_batch_store_tasks_failed_total", documentation: "Final failed KV transport batch_store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_batch_store_tasks_canceled_total", documentation: "Final canceled KV transport batch_store tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_delete_tasks_succeeded_total", documentation: "Final succeeded KV transport delete tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_delete_tasks_failed_total", documentation: "Final failed KV transport delete tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_delete_tasks_canceled_total", documentation: "Final canceled KV transport delete tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_keep_alive_tasks_succeeded_total", documentation: "Final succeeded KV transport keep_alive tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_keep_alive_tasks_failed_total", documentation: "Final failed KV transport keep_alive tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_transport_keep_alive_tasks_canceled_total", documentation: "Final canceled KV transport keep_alive tasks; recorded once, not submit or wait calls"}
+  - {name: "kv_client_query_entries_succeeded_total", documentation: "Final succeeded entries in completed KV client query tasks; query misses are valid results"}
+  - {name: "kv_client_query_entries_failed_total", documentation: "Final failed entries in completed KV client query tasks; query misses are valid results"}
+  - {name: "kv_client_load_entries_succeeded_total", documentation: "Final succeeded entries in completed KV client load tasks; query misses are valid results"}
+  - {name: "kv_client_load_entries_failed_total", documentation: "Final failed entries in completed KV client load tasks; query misses are valid results"}
+  - {name: "kv_client_load_submitted_bytes_total", documentation: "Payload bytes of accepted KV client load submissions"}
+  - {name: "kv_client_load_completed_bytes_total", documentation: "Successfully completed KV client load payload bytes; partial failures counted per entry"}
+  - {name: "kv_client_store_entries_succeeded_total", documentation: "Final succeeded entries in completed KV client store tasks; query misses are valid results"}
+  - {name: "kv_client_store_entries_failed_total", documentation: "Final failed entries in completed KV client store tasks; query misses are valid results"}
+  - {name: "kv_client_store_submitted_bytes_total", documentation: "Payload bytes of accepted KV client store submissions"}
+  - {name: "kv_client_store_completed_bytes_total", documentation: "Successfully completed KV client store payload bytes; partial failures counted per entry"}
+  - {name: "kv_client_batch_load_entries_succeeded_total", documentation: "Final succeeded entries in completed KV client batch_load tasks; query misses are valid results"}
+  - {name: "kv_client_batch_load_entries_failed_total", documentation: "Final failed entries in completed KV client batch_load tasks; query misses are valid results"}
+  - {name: "kv_client_batch_load_submitted_bytes_total", documentation: "Payload bytes of accepted KV client batch_load submissions"}
+  - {name: "kv_client_batch_load_completed_bytes_total", documentation: "Successfully completed KV client batch_load payload bytes; partial failures counted per entry"}
+  - {name: "kv_client_batch_store_entries_succeeded_total", documentation: "Final succeeded entries in completed KV client batch_store tasks; query misses are valid results"}
+  - {name: "kv_client_batch_store_entries_failed_total", documentation: "Final failed entries in completed KV client batch_store tasks; query misses are valid results"}
+  - {name: "kv_client_batch_store_submitted_bytes_total", documentation: "Payload bytes of accepted KV client batch_store submissions"}
+  - {name: "kv_client_batch_store_completed_bytes_total", documentation: "Successfully completed KV client batch_store payload bytes; partial failures counted per entry"}
+  - {name: "kv_client_delete_entries_succeeded_total", documentation: "Final succeeded entries in completed KV client delete tasks; query misses are valid results"}
+  - {name: "kv_client_delete_entries_failed_total", documentation: "Final failed entries in completed KV client delete tasks; query misses are valid results"}
+  - {name: "kv_client_prerequisite_errors_total", documentation: "Failed prerequisite event waits"}
+  - {name: "kv_client_wait_timeouts_total", documentation: "Client wait deadline expirations; not transport execution timeouts"}
+  - {name: "kv_client_queue_full_total", documentation: "Rejected client submissions due to a full queue"}
+  - {name: "kv_transport_queue_full_total", documentation: "Rejected transport submissions due to a full queue"}
+  - {name: "kv_transport_send_buffer_exhaustions_total", documentation: "Send buffer allocations rejected because no slot is free"}
+  - {name: "kv_transport_flag_buffer_exhaustions_total", documentation: "Flag buffer allocations rejected because no slot is free"}
+  - {name: "kv_transport_send_failed_subbatches_total", documentation: "Sub-batches rejected by provider Send or invalid Send result count"}
+  - {name: "kv_transport_prepare_failures_total", documentation: "Transport tasks failing request preparation before connection selection"}
+  - {name: "kv_transport_response_parse_errors_total", documentation: "Sub-batches with an invalid response"}
+  - {name: "kv_transport_cqe_internal_errors_total", documentation: "Sub-batches returning CQE internal error"}
+  - {name: "kv_transport_cqe_other_errors_total", documentation: "Other failed CQE sub-batches excluding IO timeout and internal error"}
+  - {name: "kv_client_query_hit_keys_total", documentation: "Hit keys in successfully completed client query tasks"}
+  - {name: "kv_client_query_miss_keys_total", documentation: "Miss keys in successfully completed client query tasks; excludes failed queries"}
+  - {name: "asu_lookup_timeout_fallback_total", documentation: "ASU lookup timeouts converted to cache misses"}
+  - {name: "asu_build_kv_buffers_errors_total", documentation: "ASU buffer descriptor conversion failures before KV submission"}
+
+gauge:
+  - {name: "kv_client_queue_depth", documentation: "Process-wide aggregate kv client queue depth; sampled by a single writer every second"}
+  - {name: "kv_transport_queue_depth", documentation: "Process-wide aggregate kv transport queue depth; sampled by a single writer every second"}
+  - {name: "kv_client_queue_capacity", documentation: "Process-wide aggregate kv client queue capacity; sampled by a single writer every second"}
+  - {name: "kv_transport_queue_capacity", documentation: "Process-wide aggregate kv transport queue capacity; sampled by a single writer every second"}
+  - {name: "kv_client_tasks_inflight", documentation: "Process-wide aggregate kv client tasks inflight; sampled by a single writer every second"}
+  - {name: "kv_transport_tasks_inflight", documentation: "Process-wide aggregate kv transport tasks inflight; sampled by a single writer every second"}
+  - {name: "kv_transport_send_buffer_slots_used", documentation: "Process-wide aggregate kv transport send buffer slots used; sampled by a single writer every second"}
+  - {name: "kv_transport_send_buffer_slots_capacity", documentation: "Process-wide aggregate kv transport send buffer slots capacity; sampled by a single writer every second"}
+  - {name: "kv_transport_flag_buffer_slots_used", documentation: "Process-wide aggregate kv transport flag buffer slots used; sampled by a single writer every second"}
+  - {name: "kv_transport_flag_buffer_slots_capacity", documentation: "Process-wide aggregate kv transport flag buffer slots capacity; sampled by a single writer every second"}
 
 histogram:
-  - {name: "kv_client_task_enqueue_duration_seconds", documentation: "KV client API-to-enqueue duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_client_task_queue_duration_seconds", documentation: "KV client task queue duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_client_task_process_duration_seconds", documentation: "KV client task processing duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_client_task_send_duration_seconds", documentation: "KV client duration until all Send calls return", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_client_task_e2e_duration_seconds", documentation: "KV client task end-to-end duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_pre_send_duration_seconds", documentation: "KV transport duration before Send", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_queue_duration_seconds", documentation: "KV transport task queue duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_process_duration_seconds", documentation: "KV transport task processing duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_send_duration_seconds", documentation: "KV transport duration until Send returns", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_send_call_duration_seconds", documentation: "KV transport provider Send call duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_completion_duration_seconds", documentation: "KV transport completion duration after Send", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_node_task_send_duration_seconds", documentation: "KV transport node task send duration; standalone labels by node_id", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_node_task_completion_duration_seconds", documentation: "KV transport node task completion duration; standalone labels by node_id", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
-  - {name: "kv_transport_task_e2e_duration_seconds", documentation: "KV transport task end-to-end duration from submit to completion", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]}
+  - {name: "kv_client_task_enqueue_duration_seconds", documentation: "KV client API-to-enqueue duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_client_task_queue_duration_seconds", documentation: "KV client task queue duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_client_task_process_duration_seconds", documentation: "KV client task processing duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_client_task_send_duration_seconds", documentation: "KV client duration until all Send calls return", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_client_task_e2e_duration_seconds", documentation: "KV client task end-to-end duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_pre_send_duration_seconds", documentation: "KV transport duration before Send", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_queue_duration_seconds", documentation: "KV transport task queue duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_process_duration_seconds", documentation: "KV transport task processing duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_send_duration_seconds", documentation: "KV transport duration until Send returns", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_send_call_duration_seconds", documentation: "KV transport provider Send call duration", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_completion_duration_seconds", documentation: "KV transport completion duration after Send", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_node_task_send_duration_seconds", documentation: "KV transport node task send duration; standalone labels by node_id", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_node_task_completion_duration_seconds", documentation: "KV transport node task completion duration; standalone labels by node_id", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_transport_task_e2e_duration_seconds", documentation: "KV transport task end-to-end duration from submit to completion", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]}
+  - {name: "kv_client_query_task_e2e_duration_seconds", documentation: "KV client query submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_load_task_e2e_duration_seconds", documentation: "KV client load submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_store_task_e2e_duration_seconds", documentation: "KV client store submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_batch_load_task_e2e_duration_seconds", documentation: "KV client batch_load submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_batch_store_task_e2e_duration_seconds", documentation: "KV client batch_store submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_delete_task_e2e_duration_seconds", documentation: "KV client delete submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_query_task_e2e_duration_seconds", documentation: "KV transport query submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_load_task_e2e_duration_seconds", documentation: "KV transport load submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_store_task_e2e_duration_seconds", documentation: "KV transport store submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_batch_load_task_e2e_duration_seconds", documentation: "KV transport batch_load submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_batch_store_task_e2e_duration_seconds", documentation: "KV transport batch_store submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_delete_task_e2e_duration_seconds", documentation: "KV transport delete submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_transport_keep_alive_task_e2e_duration_seconds", documentation: "KV transport keep_alive submit-to-completion duration including failed tasks", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_prerequisite_wait_duration_seconds", documentation: "Time spent waiting for the prerequisite event", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "asu_build_kv_buffers_duration_seconds", documentation: "ASU buffer descriptor conversion duration including failures", buckets: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30]}
+  - {name: "kv_client_query_prefix_hit_keys", documentation: "Prefix hit key count for successful query tasks", buckets: [0, 1, 2, 4, 8, 16, 32, 64, 128, 512, 2048]}

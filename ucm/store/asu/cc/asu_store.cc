@@ -36,6 +36,8 @@
 #include <string>
 #include <utility>
 #include "kv_client.h"
+#include "kv_metrics/metrics.h"
+#include "kv_metrics/ucm_metrics_adapter.h"
 #include "logger/logger.h"
 #include "ucmstore_v1.h"
 
@@ -268,6 +270,8 @@ public:
         auto status = CheckConfig(config);
         if (status.Failure()) { return status; }
 
+        (void)kv::metrics::EnsureUcmKvMetricsInstalled();
+
         tensorLayout_ = ParseTensorLayout(config.tensorLayout);
         config_ = std::move(config);
         client_ = CreateClient(config_);
@@ -313,7 +317,10 @@ public:
         auto keys = BuildBlockKeys(blocks, num);
         kv::QueryResult queryResult;
         auto status = Query(keys, queryResult);
-        if (status.code == AsuStatusCode::TIMEOUT) { return static_cast<ssize_t>(-1); }
+        if (status.code == AsuStatusCode::TIMEOUT) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_lookup_timeout_fallback_total"), 1.0);
+            return static_cast<ssize_t>(-1);
+        }
         if (!status.ok()) {
             LogAsuStatus("prefix query", status);
             return ConvertStatus(status);
@@ -333,7 +340,10 @@ public:
         auto keys = BuildBlockKeys(blocks, num);
         kv::QueryResult queryResult;
         auto status = Query(keys, queryResult);
-        if (status.code == AsuStatusCode::TIMEOUT) { return static_cast<ssize_t>(-1); }
+        if (status.code == AsuStatusCode::TIMEOUT) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_lookup_timeout_fallback_total"), 1.0);
+            return static_cast<ssize_t>(-1);
+        }
         if (!status.ok()) {
             LogAsuStatus("reverse query", status);
             return ConvertStatus(status);
@@ -426,8 +436,15 @@ public:
 private:
     Expected<Detail::TaskHandle> Submit(Detail::TaskDesc task, bool store)
     {
+        const auto timer = kv::metrics::StartMetricTimer();
         auto entries = BuildKvBuffers(task);
-        if (!entries) { return entries.Error(); }
+        if (const auto elapsed = kv::metrics::ElapsedSeconds(timer)) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_build_kv_buffers_duration_seconds"), *elapsed);
+        }
+        if (!entries) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_build_kv_buffers_errors_total"), 1.0);
+            return entries.Error();
+        }
         kv::TaskId taskId = kv::kInvalidTaskId;
         auto status =
             store ? client_->BatchStoreAsync(entries.Value(), taskId, task.prerequisiteHandle)
@@ -780,7 +797,10 @@ private:
         auto keys = BuildBlockKeys(blocks, num);
         kv::QueryResult queryResult;
         auto status = Query(keys, queryResult);
-        if (status.code == AsuStatusCode::TIMEOUT) { return result; }
+        if (status.code == AsuStatusCode::TIMEOUT) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_lookup_timeout_fallback_total"), 1.0);
+            return result;
+        }
         if (!status.ok()) {
             LogAsuStatus("query blocks", status);
             return ConvertStatus(status);

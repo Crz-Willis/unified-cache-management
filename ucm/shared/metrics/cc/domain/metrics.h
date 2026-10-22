@@ -41,6 +41,7 @@
 namespace UC::Metrics {
 using MetricId = uint32_t;
 constexpr MetricId INVALID_METRIC_ID = std::numeric_limits<MetricId>::max();
+enum class UpdateResult { Updated, NotInitialized, Unregistered };
 struct HistogramStat {
     std::vector<uint64_t> bucketCounts;
     double sum{0.0};
@@ -94,14 +95,19 @@ struct MetricBuffer {
         int idx_;
     };
 
-    int SwitchBuffer() { return writeIdx_.fetch_xor(1, std::memory_order_seq_cst); }
+    int SwitchBuffer()
+    {
+        int oldIdx = writeIdx_.exchange(1 - writeIdx_.load(std::memory_order_acquire),
+                                        std::memory_order_acq_rel);
+        return oldIdx;
+    }
 
     int BeginWrite()
     {
         while (true) {
             int idx = writeIdx_.load(std::memory_order_acquire);
-            activeWriteIdx_.store(idx, std::memory_order_seq_cst);
-            if (writeIdx_.load(std::memory_order_seq_cst) == idx) { return idx; }
+            activeWriteIdx_.store(idx, std::memory_order_release);
+            if (writeIdx_.load(std::memory_order_acquire) == idx) { return idx; }
             activeWriteIdx_.store(NO_ACTIVE_WRITER, std::memory_order_release);
         }
     }
@@ -110,7 +116,7 @@ struct MetricBuffer {
 
     void WaitNoActiveWriter(int idx) const
     {
-        while (activeWriteIdx_.load(std::memory_order_seq_cst) == idx) {
+        while (activeWriteIdx_.load(std::memory_order_acquire) == idx) {
             std::this_thread::yield();
         }
     }
@@ -144,9 +150,23 @@ public:
     void CreateStats(const std::string& name, const std::string& type,
                      const std::vector<double>& buckets = {});
 
+    // Zero until initialized; changes whenever a new metric is registered.
+    uint64_t GetRegistrationEpoch() const noexcept
+    {
+        return isInited_.load(std::memory_order_acquire)
+                   ? registerEpoch_.load(std::memory_order_acquire)
+                   : 0;
+    }
+
+    // Read-only readiness query for producers with optional gauge reporters.
+    bool HasRegisteredGauge(const std::vector<std::string>& names);
+
     void UpdateStats(const std::string& name, double value);
 
     void UpdateStats(CachedMetric& metric, double value);
+
+    // Report skipped updates without resolving the metric name a second time.
+    UpdateResult TryUpdateStats(CachedMetric& metric, double value);
 
     void UpdateStats(const std::unordered_map<std::string, double>& values);
 

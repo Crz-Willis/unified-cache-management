@@ -2,6 +2,7 @@
 #include <atomic>
 #include <mutex>
 #include <utility>
+#include "kv_metrics/resource_metrics.h"
 
 namespace kv::metrics {
 namespace {
@@ -43,6 +44,7 @@ bool InstallBackend(std::shared_ptr<KvMetricsBackend> backend, std::string* erro
 
 void Shutdown()
 {
+    StopResourceReporter();
     gBackendFast.store(nullptr, std::memory_order_release);
     std::shared_ptr<KvMetricsBackend> backend;
     {
@@ -63,6 +65,11 @@ void Flush()
 }
 
 bool IsEnabled() noexcept { return LoadBackendFast() != nullptr; }
+
+bool IsBackendInstalled(const KvMetricsBackend* backend) noexcept
+{
+    return backend != nullptr && LoadBackendFast() == backend;
+}
 
 MetricTimer StartMetricTimer() noexcept
 {

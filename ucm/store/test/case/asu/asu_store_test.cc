@@ -36,6 +36,7 @@
 #include <utility>
 #include <vector>
 #include "detail/types_helper.h"
+#include "metrics_api.h"
 
 namespace {
 
@@ -47,10 +48,7 @@ struct CacheKeyHasher {
     }
 };
 
-kv::MRHandle MakeTestMrHandle(std::uintptr_t value)
-{
-    return reinterpret_cast<kv::MRHandle>(value);
-}
+kv::MRHandle MakeTestMrHandle(std::uintptr_t value) { return static_cast<kv::MRHandle>(value); }
 
 struct FakeKvClientState {
     std::vector<UC::AsuStore::Config> initConfigs;
@@ -62,6 +60,7 @@ struct FakeKvClientState {
     std::uintptr_t lastStoreEventHandle{0};
     bool failRegistration{false};
     bool omitRegisteredHandle{false};
+    kv::Status queryStatus{kv::Status::OK()};
 };
 
 class FakeKvClient final : public kv::KvClient {
@@ -92,6 +91,7 @@ public:
     kv::Status QueryAsync(const std::vector<kv::CacheKey>& keys, kv::TaskId& taskId) override
     {
         if (!initialized_) { return NotInitialized(); }
+        if (!state_->queryStatus.ok()) { return state_->queryStatus; }
 
         kv::TaskResult taskResult;
         taskResult.status = kv::Status::OK();
@@ -313,6 +313,47 @@ void ExpectLoadDumpSmoke(UC::StoreV1& store, const UC::Detail::BlockId& block, v
 }
 
 }  // namespace
+
+TEST(UCAsuStoreTest, ExportsBufferBuildAndLookupFallbackMetricsThroughUcm)
+{
+    UC::Metrics::SetUp();
+    UC::Metrics::CreateStats("asu_build_kv_buffers_duration_seconds", "histogram", {1.0});
+    UC::Metrics::CreateStats("asu_build_kv_buffers_errors_total", "counter");
+    UC::Metrics::CreateStats("asu_lookup_timeout_fallback_total", "counter");
+    UC::Metrics::GetAllStatsAndClear();
+    UC::AsuStore::AsuStore store;
+    auto state = UseFakeClient(store);
+    auto config = MakeBaseConfig();
+    config.Set("asu_ids", std::vector<ssize_t>{1001});
+    std::array<std::byte, kv::kAlignmentBytes> buffer{};
+    RegisterPersistentRanges(config, {
+                                         {buffer.data(), buffer.size()}
+    });
+    ASSERT_TRUE(store.Setup(config).Success());
+    const auto block =
+        UC::Test::Detail::TypesHelper::MakeBlockId("a1b2c3d4e5f6789012345678901234ab");
+    auto load = store.Load(MakeTask(block, buffer.data()));
+    ASSERT_TRUE(load.HasValue());
+    ASSERT_TRUE(store.Wait(load.Value()).Success());
+    auto invalid = store.Dump(MakeTask(block, nullptr));
+    EXPECT_FALSE(invalid.HasValue());
+
+    state->queryStatus = kv::Status::Error(kv::StatusCode::TIMEOUT, "query timeout");
+    auto lookup = store.Lookup(&block, 1);
+    ASSERT_TRUE(lookup.HasValue());
+    EXPECT_EQ(lookup.Value(), (std::vector<std::uint8_t>{0}));
+    auto prefix = store.LookupOnPrefix(&block, 1);
+    ASSERT_TRUE(prefix.HasValue());
+    EXPECT_EQ(prefix.Value(), -1);
+    auto reverse = store.LookupOnReverse(&block, 1);
+    ASSERT_TRUE(reverse.HasValue());
+    EXPECT_EQ(reverse.Value(), -1);
+    const auto stats = UC::Metrics::GetAllStatsAndClear();
+    EXPECT_EQ(std::get<0>(stats).at("asu_build_kv_buffers_errors_total"), 1);
+    EXPECT_EQ(std::get<0>(stats).at("asu_lookup_timeout_fallback_total"), 3);
+    EXPECT_EQ(std::get<2>(stats).at("asu_build_kv_buffers_duration_seconds").bucketCounts,
+              (std::vector<std::uint64_t>{2, 0}));
+}
 
 TEST(UCAsuStoreTest, DumpPassesPrerequisiteEventToClient)
 {

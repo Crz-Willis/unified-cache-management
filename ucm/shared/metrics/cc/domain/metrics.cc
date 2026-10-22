@@ -72,6 +72,17 @@ void Metrics::CreateStats(const std::string& name, const std::string& type,
     registerEpoch_.fetch_add(1, std::memory_order_release);
 }
 
+bool Metrics::HasRegisteredGauge(const std::vector<std::string>& names)
+{
+    if (!isInited_.load(std::memory_order_acquire)) { return false; }
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+    for (const auto& name : names) {
+        const auto id = ResolveMetricId(name);
+        if (id != INVALID_METRIC_ID && metrics_[id].type == MetricType::GAUGE) { return true; }
+    }
+    return false;
+}
+
 void Metrics::UpdateStats(const std::string& name, double value)
 {
     if (!isInited_.load(std::memory_order_acquire)) { return; }
@@ -80,7 +91,16 @@ void Metrics::UpdateStats(const std::string& name, double value)
 
 void Metrics::UpdateStats(CachedMetric& metric, double value)
 {
-    UpdateStats(ResolveCachedMetric(metric), value);
+    (void)TryUpdateStats(metric, value);
+}
+
+UpdateResult Metrics::TryUpdateStats(CachedMetric& metric, double value)
+{
+    if (!isInited_.load(std::memory_order_acquire)) { return UpdateResult::NotInitialized; }
+    const auto id = ResolveCachedMetric(metric);
+    if (id == INVALID_METRIC_ID) { return UpdateResult::Unregistered; }
+    UpdateStats(id, value);
+    return UpdateResult::Updated;
 }
 
 void Metrics::UpdateStats(MetricId id, double value)

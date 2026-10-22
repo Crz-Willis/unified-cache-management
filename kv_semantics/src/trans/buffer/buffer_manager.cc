@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include "kv_metrics/metrics.h"
 #include "logger.h"
 #include "runtime/buffer.h"
 #include "runtime/device.h"
@@ -106,6 +107,10 @@ BufferManager::~BufferManager() { Shutdown(); }
 
 void BufferManager::Shutdown()
 {
+    if (metricResource_) {
+        metrics::AdjustResource(*metricResource_, -metricUsed_.exchange(0), -metricCapacity_);
+        metricCapacity_ = 0;
+    }
     tokenId_ = 0;
     region_.Reset();
     slot_capacity_ = 0;
@@ -150,6 +155,10 @@ Status BufferManager::Init(std::string name, MemoryType type, std::size_t slot_c
     }
 
     index_pool_.Setup(static_cast<IndexPool::Index>(slot_num));
+    if (metricResource_) {
+        metricCapacity_ = static_cast<std::int64_t>(slot_num);
+        metrics::AdjustResource(*metricResource_, 0, metricCapacity_);
+    }
     tokenId_ = 0;
 
     return Status::OK();
@@ -175,7 +184,17 @@ Status BufferManager::Allocate(std::size_t size, ScatterGatherEntry& sge)
 
     auto idx = index_pool_.Acquire();
     if (idx == IndexPool::npos) {
+        if (metricResource_) {
+            metrics::UpdateStats(*metricResource_ == metrics::Resource::SendSlots
+                                     ? KV_METRIC("kv_transport_send_buffer_exhaustions_total")
+                                     : KV_METRIC("kv_transport_flag_buffer_exhaustions_total"),
+                                 1.0);
+        }
         return Status::Error(StatusCode::RESOURCE_BUSY, name_ + ": no free slots");
+    }
+    if (metricResource_) {
+        metricUsed_.fetch_add(1);
+        metrics::AdjustResource(*metricResource_, 1);
     }
     const auto offset = idx * slot_stride_;
     sge.local_addr =
@@ -204,6 +223,10 @@ Status BufferManager::Free(std::uint32_t slot_index)
         std::memset(p, 0, slot_stride_);
     }
     index_pool_.Release(static_cast<IndexPool::Index>(slot_index));
+    if (metricResource_) {
+        metricUsed_.fetch_sub(1);
+        metrics::AdjustResource(*metricResource_, -1);
+    }
     return Status::OK();
 }
 

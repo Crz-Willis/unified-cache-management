@@ -32,6 +32,13 @@ void CreateStats(const std::string& name, const std::string& type,
     Metrics::GetInstance().CreateStats(name, type, buckets);
 }
 
+uint64_t GetRegistrationEpoch() noexcept { return Metrics::GetInstance().GetRegistrationEpoch(); }
+
+bool HasRegisteredGauge(const std::vector<std::string>& names)
+{
+    return Metrics::GetInstance().HasRegisteredGauge(names);
+}
+
 void UpdateStats(const std::string& name, double value)
 {
     Metrics::GetInstance().UpdateStats(name, value);
@@ -40,6 +47,11 @@ void UpdateStats(const std::string& name, double value)
 void UpdateStats(CachedMetric& metric, double value)
 {
     Metrics::GetInstance().UpdateStats(metric, value);
+}
+
+UpdateResult TryUpdateStats(CachedMetric& metric, double value)
+{
+    return Metrics::GetInstance().TryUpdateStats(metric, value);
 }
 
 void UpdateStats(const std::unordered_map<std::string, double>& values)

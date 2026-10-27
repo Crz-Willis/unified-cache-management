@@ -7,6 +7,7 @@
 #include <sstream>
 #include <unordered_map>
 #include "kv_metrics/metrics.h"
+#include "kv_metrics/resource_metrics.h"
 #include "kv_metrics/standalone_metrics_backend.h"
 #include "kv_runtime_proxy.h"
 #include "kv_test_config_helpers.h"
@@ -47,6 +48,7 @@ public:
                                  "failed to start KV metrics exporter: " + error);
         }
         started_ = true;
+        kv::metrics::StartResourceReporter();
         shutdownGraceMs_ = config.shutdownGraceMs;
         std::cout << "metrics: http://" << config.listenAddress << ':' << config.port << config.path
                   << '\n';

@@ -1,5 +1,6 @@
 #include "kv_metrics/ucm_metrics_backend.h"
 #include <exception>
+#include "kv_metrics/resource_metrics.h"
 #include "logger.h"
 #include "metrics_api.h"
 
@@ -81,6 +82,14 @@ void EnsureUcmKvMetricsInstalled() noexcept
             return;
         }
         UC_INFO("Installed KV metrics backend: UcmMetricsBackend");
+        try {
+            // Construct the collector before the reporter so the reporter stops
+            // first at process exit. This neither initializes nor registers metrics.
+            UC::Metrics::UpdateStats(std::unordered_map<std::string, double>{});
+            StartResourceReporter();
+        } catch (const std::exception& ex) {
+            UC_ERROR("Failed to start KV resource reporter: {}", ex.what());
+        }
     } catch (const std::exception& ex) {
         UC_ERROR(
             "Failed to install ASU UCM metrics backend: {}. Store setup continues; "

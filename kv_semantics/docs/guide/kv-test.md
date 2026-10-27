@@ -492,6 +492,23 @@ With `--progress`, bench prints one measured progress line per second instead
 of rewriting a terminal line. The final summary and report output are still
 written after the run.
 
+## Prometheus metrics
+
+When `metrics.enabled=true`, `kv-test` starts the standalone exporter and explicitly
+starts the resource reporter. Standalone applications using
+`SetUpStandaloneMetrics()` must call `kv::metrics::StartResourceReporter()` from
+`kv_metrics/resource_metrics.h` after successful setup if they need resource
+gauges. `kv::metrics::Shutdown()` stops the reporter before shutting down the backend.
+
+Resource gauges aggregate instances within the process and are sampled once per
+second; they do not capture high-water marks. Disabling export does not eliminate
+native resource accounting. The standalone exporter uses the `kv:` prefix by default.
+
+See the [ASU / KV metric reference](../../../docs/docs-site/docs/en/user-guide/observability/metrics-reference.md#16-asu--kv-metrics)
+for metric semantics and UCM export behavior, and
+[metrics development](../../../docs/docs-site/docs/en/developer-guide/add-metrics.md#generate-and-validate-kv-metrics)
+for catalog generation and validation commands.
+
 ## Output
 
 For commands other than `config check`, the result writer creates:

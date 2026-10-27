@@ -62,6 +62,8 @@ TransportTaskExecutor::~TransportTaskExecutor()
 
 Status TransportTaskExecutor::Init()
 {
+    sendBufferManager_.SetMetricResource(metrics::Resource::SendSlots);
+    flagBufferManager_.SetMetricResource(metrics::Resource::FlagSlots);
     (void)metrics::RegisterMetricLabels(asuSendMetric_.Name(), asuSendMetric_.Labels());
     (void)metrics::RegisterMetricLabels(asuCompletionMetric_.Name(), asuCompletionMetric_.Labels());
     auto status = sendBufferManager_.Init("asu send buffer", MemoryType::HOST_PINNED,
@@ -317,6 +319,9 @@ bool TransportTaskExecutor::Execute(const TransportTaskPtr& task)
     std::vector<TransportSubBatchContext> subBatchContexts;
     auto status = PrepareTaskSubBatches(*task, subBatchContexts);
 
+    if (!status.ok()) {
+        metrics::UpdateStats(KV_METRIC("kv_transport_prepare_failures_total"), 1.0);
+    }
     if (status.ok()) { status = AssignSubBatchConnections(subBatchContexts); }
 
     std::vector<TransProvider::SendIoBatch> ioBatches;
@@ -430,6 +435,8 @@ bool TransportTaskExecutor::Poll(const TransportTaskPtr& task)
                 if (const auto status = protocolManager_.UnpackResponse(
                         responseData, ToKvOpcode(subBatchContext.opType), batchNumber, response);
                     !status.ok()) {
+                    metrics::UpdateStats(KV_METRIC("kv_transport_response_parse_errors_total"),
+                                         1.0);
                     completeWithError(status);
                     continue;
                 }

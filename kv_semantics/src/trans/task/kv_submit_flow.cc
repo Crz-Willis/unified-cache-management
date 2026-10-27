@@ -141,6 +141,8 @@ void TransportTaskExecutor::SendSubBatchBuffers(
         KV_METRIC("kv_transport_task_send_call_duration_seconds"),
         std::chrono::duration<double>(std::chrono::steady_clock::now() - sendStartedAt).count());
     if (sendStatuses.size() != ioBatches.size()) {
+        metrics::UpdateStats(KV_METRIC("kv_transport_send_failed_subbatches_total"),
+                             static_cast<double>(ioBatches.size()));
         const auto status = Status::Error(StatusCode::INTERNAL_ERROR,
                                           "transport send returned unexpected status count");
         KV_ERROR("Transport send returned unexpected status count expected={} actual={}",
@@ -156,6 +158,7 @@ void TransportTaskExecutor::SendSubBatchBuffers(
         auto& subBatchContext = subBatchContexts[index];
         const auto& subBatchStatus = sendStatuses[index];
         if (subBatchStatus.ok()) { continue; }
+        metrics::UpdateStats(KV_METRIC("kv_transport_send_failed_subbatches_total"), 1.0);
 
         KV_ERROR("Send sub-batch failed sub_batch_index={} cid={} code={} message={}", index,
                  subBatchContext.cid, static_cast<int>(subBatchStatus.code),

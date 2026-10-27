@@ -9,6 +9,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include "kv_metrics/resource_metrics.h"
 #include "logger.h"
 #include "metrics_api.h"
 
@@ -88,6 +89,7 @@ TEST_F(UcmKvMetricsInstallDeathTest, PreservesExistingBackendAndReinstallsAfterS
             ASSERT_TRUE(InstallBackend(other));
             EnsureUcmKvMetricsInstalled();
             EXPECT_EQ(other.use_count(), 2);
+            EXPECT_FALSE(IsResourceReporterRunning());
             EXPECT_FALSE(InstallBackend(other));
             Shutdown();
             EnsureUcmKvMetricsInstalled();
@@ -161,6 +163,96 @@ TEST_F(UcmKvMetricsInstallDeathTest, RecoversAfterCollectorInitializationAndRegi
             UpdateStats(metric, 3.0);
             EXPECT_DOUBLE_EQ(std::get<0>(UC::Metrics::GetAllStatsAndClear()).at(metric.Name()),
                              3.0);
+            _exit(testing::Test::HasFailure() ? 1 : 0);
+        },
+        testing::ExitedWithCode(0), "");
+}
+
+TEST_F(UcmKvMetricsInstallDeathTest, StopsNativeReporterAtProcessExit)
+{
+    ASSERT_EXIT(
+        {
+            // Shutdown/status checks before installation must not construct a
+            // reporter whose lifetime could exceed the UCM collector's.
+            Shutdown();
+            EXPECT_FALSE(IsResourceReporterRunning());
+            // Registered before construction, so this runs after reporter destruction.
+            ASSERT_EQ(std::atexit([] {
+                          StopResourceReporter();
+                          if (IsResourceReporterRunning()) { _exit(1); }
+                      }),
+                      0);
+            EnsureUcmKvMetricsInstalled();
+            EXPECT_TRUE(IsResourceReporterRunning());
+            // Exercise static destruction rather than bypassing it with _exit.
+            std::exit(testing::Test::HasFailure() ? 1 : 0);
+        },
+        testing::ExitedWithCode(0), "");
+}
+
+bool WaitForGauge(const std::string& name, double expected)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    do {
+        const auto gauges = std::get<1>(UC::Metrics::GetAllStatsAndClear());
+        const auto found = gauges.find(name);
+        if (found != gauges.end() && found->second == expected) { return true; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    } while (std::chrono::steady_clock::now() < deadline);
+    return false;
+}
+
+TEST_F(UcmKvMetricsInstallDeathTest, StartsReporterForConfiguredGaugeAndRestartsAfterShutdown)
+{
+    ASSERT_EXIT(
+        {
+            UC::Metrics::SetUp();
+            const std::string gauge = "kv_client_queue_capacity";
+            UC::Metrics::CreateStats(gauge, "gauge");
+            EXPECT_TRUE(std::get<1>(UC::Metrics::GetAllStatsAndClear()).empty());
+            UC::Metrics::CreateStats(gauge, "gauge");
+            AdjustResource(Resource::ClientQueue, 0, 7);
+            EnsureUcmKvMetricsInstalled();
+            EXPECT_TRUE(IsResourceReporterRunning());
+            EXPECT_TRUE(WaitForGauge(gauge, 7));
+            std::vector<std::thread> callers;
+            for (int i = 0; i < 8; ++i) {
+                callers.emplace_back([] { EnsureUcmKvMetricsInstalled(); });
+            }
+            for (auto& caller : callers) { caller.join(); }
+            Shutdown();
+            EXPECT_FALSE(IsResourceReporterRunning());
+            UC::Metrics::GetAllStatsAndClear();
+            EnsureUcmKvMetricsInstalled();
+            EXPECT_TRUE(IsResourceReporterRunning());
+            EXPECT_TRUE(WaitForGauge(gauge, 7));
+            Shutdown();
+            _exit(testing::Test::HasFailure() ? 1 : 0);
+        },
+        testing::ExitedWithCode(0), "");
+}
+
+TEST_F(UcmKvMetricsInstallDeathTest, ReportsLateRegisteredGaugeWithoutNativeTraffic)
+{
+    ASSERT_EXIT(
+        {
+            UC::Metrics::SetUp();
+            // Native sampling is independent of the selected UCM catalog.
+            UC::Metrics::CreateStats("other_store_requests", "counter");
+            EnsureUcmKvMetricsInstalled();
+            CachedMetric omitted{"not_in_custom_catalog"};
+            UpdateStats(omitted, 100);
+            EXPECT_TRUE(IsResourceReporterRunning());
+            EXPECT_TRUE(std::get<1>(UC::Metrics::GetAllStatsAndClear()).empty());
+            const std::string gauge = "kv_transport_flag_buffer_slots_capacity";
+            AdjustResource(Resource::FlagSlots, 0, 4);
+            UC::Metrics::CreateStats(gauge, "gauge");
+            // The next periodic sample resolves registration through the
+            // existing UCM API, even without a request or another Store setup.
+            EXPECT_TRUE(WaitForGauge(gauge, 4));
+            Shutdown();
+            EXPECT_FALSE(IsResourceReporterRunning());
+            EXPECT_EQ(std::get<0>(UC::Metrics::GetAllStatsAndClear()).count(omitted.Name()), 0U);
             _exit(testing::Test::HasFailure() ? 1 : 0);
         },
         testing::ExitedWithCode(0), "");

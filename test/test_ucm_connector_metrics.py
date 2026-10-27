@@ -576,6 +576,124 @@ def _vllm_config(config=None, launch_config=None):
     )
 
 
+@pytest.mark.parametrize(
+    "connector_kind", ["direct", "layerwise", "hla", "hla_layerwise", "fawa"]
+)
+@pytest.mark.parametrize("store_pipeline", ["ASU", "Cache|Posix"])
+def test_store_creation_reuses_outer_metrics_setup(
+    monkeypatch, connector_kind, store_pipeline
+):
+    module = importlib.import_module("ucm.integration.vllm.ucm_connector")
+    from ucm.integration.vllm.hla_connector import (
+        UCMHybridLinearAttentionConnector,
+        UCMHybridLinearAttentionLayerWiseConnector,
+    )
+    from ucm.integration.vllm.hma_connector import UCMFAWAConnector
+
+    classes = {
+        "direct": UCMDirectConnector,
+        "layerwise": UCMLayerWiseConnector,
+        "hla": UCMHybridLinearAttentionConnector,
+        "hla_layerwise": UCMHybridLinearAttentionLayerWiseConnector,
+        "fawa": UCMFAWAConnector,
+    }
+    connector = object.__new__(classes[connector_kind])
+    store_config = {"store_pipeline": store_pipeline}
+    connector.connector_configs = [
+        {"ucm_connector_name": "Pipeline", "ucm_connector_config": store_config}
+    ]
+    connector.launch_config = {"enable_metrics": False}
+    connector.is_mla = False
+    connector.unique_id = "asu-metrics-test"
+    connector._role = KVConnectorRole.SCHEDULER
+    connector._vllm_config = SimpleNamespace(
+        parallel_config=SimpleNamespace(data_parallel_rank=1)
+    )
+    monkeypatch.setattr(
+        module.UcmConnectorFactoryV1,
+        "create_connector",
+        lambda name, config, module_path: config,
+        raising=False,
+    )
+
+    def unexpected_config_resolution(*args, **kwargs):
+        raise AssertionError("Store creation must reuse the outer UCM metrics setup")
+
+    monkeypatch.setattr(
+        module, "load_launch_metrics_config", unexpected_config_resolution
+    )
+    if connector_kind == "fawa":
+        _, _, config = connector._base_store_config("fa")
+    else:
+        config = connector._create_store(None)
+
+    assert "enable_metrics" not in config
+    assert store_config == {"store_pipeline": store_pipeline}
+
+
+@pytest.mark.parametrize(
+    "source,enabled,consumers,registered",
+    [
+        ("builtin", True, None, True),
+        ("inline", True, {"multiproc": True, "vllm_connector": True}, True),
+        ("inline", True, {"multiproc": False, "vllm_connector": True}, True),
+        ("inline", True, {"multiproc": True, "vllm_connector": False}, True),
+        ("inline", True, {"multiproc": False, "vllm_connector": False}, False),
+        ("inline", False, None, False),
+        ("inline", "false", None, False),
+        ("file", True, None, True),
+        ("file", False, None, False),
+        ("empty", True, None, False),
+        ("missing", True, None, False),
+        ("without_asu", True, None, True),
+    ],
+)
+def test_ucm_setup_uses_one_catalog_for_all_stores(
+    tmp_path, source, enabled, consumers, registered
+):
+    _reset_fakes()
+    asu_metric = "kv_client_load_requests_total"
+    other_metric = "posix_healthy_count_total"
+    config = {
+        "counter": [
+            {"name": asu_metric, "documentation": "ASU load submissions"},
+            {"name": other_metric, "documentation": "Posix health checks"},
+        ],
+        "consumers": consumers or {"multiproc": False, "vllm_connector": True},
+    }
+    launch = {"enable_metrics": enabled}
+    if source in ("inline", "without_asu"):
+        if source == "without_asu":
+            config["counter"] = config["counter"][1:]
+        launch["metrics_config"] = config
+    elif source in ("file", "missing"):
+        config_path = tmp_path / "metrics.yaml"
+        if source == "file":
+            config_path.write_text(json.dumps(config))
+        launch["metrics_config_path"] = str(config_path)
+    elif source == "empty":
+        launch["metrics_config"] = {}
+
+    connector = object.__new__(UCMConnector)
+    connector.launch_config = launch
+    connector.engine_id = "test-engine"
+    connector._setup_ucm_metrics(
+        _vllm_config(launch_config=launch), KVConnectorRole.SCHEDULER
+    )
+
+    assert fake_ucmmetrics.setup_calls == int(registered)
+    assert (connector._metrics_dispatcher is not None) is registered
+    names = {entry[0] for entry in fake_ucmmetrics.created}
+    if not registered:
+        assert names == set()
+    elif source == "builtin":
+        assert {asu_metric, other_metric} <= names
+    elif source == "without_asu":
+        assert names == {other_metric}
+    else:
+        assert names == {asu_metric, other_metric}
+
+
 def _reset_fakes():
     fake_ucmmetrics.created.clear()
     fake_ucmmetrics.updated.clear()

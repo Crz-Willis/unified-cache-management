@@ -36,6 +36,7 @@
 #include <string>
 #include <utility>
 #include "kv_client.h"
+#include "kv_metrics/metrics.h"
 #include "kv_metrics/ucm_metrics_backend.h"
 #include "logger/logger.h"
 #include "ucmstore_v1.h"
@@ -322,7 +323,10 @@ public:
         auto keys = BuildBlockKeys(blocks, num);
         kv::QueryResult queryResult;
         auto status = Query(keys, queryResult);
-        if (status.code == AsuStatusCode::TIMEOUT) { return static_cast<ssize_t>(-1); }
+        if (status.code == AsuStatusCode::TIMEOUT) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_lookup_timeout_fallback_total"), 1.0);
+            return static_cast<ssize_t>(-1);
+        }
         if (!status.ok()) {
             LogAsuStatus("prefix query", status);
             return ConvertStatus(status);
@@ -342,7 +346,10 @@ public:
         auto keys = BuildBlockKeys(blocks, num);
         kv::QueryResult queryResult;
         auto status = Query(keys, queryResult);
-        if (status.code == AsuStatusCode::TIMEOUT) { return static_cast<ssize_t>(-1); }
+        if (status.code == AsuStatusCode::TIMEOUT) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_lookup_timeout_fallback_total"), 1.0);
+            return static_cast<ssize_t>(-1);
+        }
         if (!status.ok()) {
             LogAsuStatus("reverse query", status);
             return ConvertStatus(status);
@@ -790,7 +797,10 @@ private:
         auto keys = BuildBlockKeys(blocks, num);
         kv::QueryResult queryResult;
         auto status = Query(keys, queryResult);
-        if (status.code == AsuStatusCode::TIMEOUT) { return result; }
+        if (status.code == AsuStatusCode::TIMEOUT) {
+            kv::metrics::UpdateStats(KV_METRIC("asu_lookup_timeout_fallback_total"), 1.0);
+            return result;
+        }
         if (!status.ok()) {
             LogAsuStatus("query blocks", status);
             return ConvertStatus(status);

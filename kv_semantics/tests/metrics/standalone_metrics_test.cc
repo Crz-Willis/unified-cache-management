@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <netinet/in.h>
@@ -16,6 +17,7 @@
 #include <unistd.h>
 #include <vector>
 #include "kv_metrics/metrics.h"
+#include "kv_metrics/resource_metrics.h"
 #include "kv_metrics/standalone_metrics_backend.h"
 #include "task/task_manager.h"
 #include "task/trans_task_executor.h"
@@ -128,7 +130,17 @@ public:
             recordedUpdates[recordedCount++] = updates[index];
         }
     }
-    std::array<MetricUpdate, 4> recordedUpdates{};
+    std::size_t Count(const std::string& name) const
+    {
+        return std::count_if(recordedUpdates.begin(), recordedUpdates.begin() + recordedCount,
+                             [&](const auto& update) { return update.metric->Name() == name; });
+    }
+    void ExpectMetrics(std::initializer_list<const char*> names) const
+    {
+        EXPECT_EQ(recordedCount, names.size());
+        for (const auto* name : names) { EXPECT_EQ(Count(name), 1U) << name; }
+    }
+    std::array<MetricUpdate, 128> recordedUpdates{};
     std::size_t recordedCount{0};
 };
 
@@ -141,6 +153,26 @@ TEST(MetricsFacadeTest, InstallsOneBackendAndDispatchesUpdates)
     ASSERT_EQ(backend->recordedCount, 1U);
     EXPECT_EQ(backend->recordedUpdates[0].metric->Name(), "test_counter");
     EXPECT_DOUBLE_EQ(backend->recordedUpdates[0].value, 1.0);
+    Shutdown();
+}
+
+TEST_F(StandaloneMetricsTest, ResourceReportingRequiresExplicitStart)
+{
+    auto config = MakeConfig();
+    config.definitionPath.clear();
+    std::string error;
+    ASSERT_TRUE(SetUpStandaloneMetrics(config, &error)) << error;
+    EXPECT_FALSE(IsResourceReporterRunning());
+
+    ResourceCapacity capacity(Resource::ClientQueue);
+    capacity.Set(7);
+    StartResourceReporter();
+    EXPECT_TRUE(IsResourceReporterRunning());
+    StopResourceReporter();
+    EXPECT_FALSE(IsResourceReporterRunning());
+    Flush();
+    const auto response = HttpGet(config.port, config.metricsPath);
+    EXPECT_NE(response.find("kv:kv_client_queue_capacity 7"), std::string::npos);
     Shutdown();
 }
 
@@ -397,7 +429,11 @@ TEST(ClientTaskMetricsTest, RecordsSubmitToCompletionOnce)
     ::kv::ClientTaskManager::Finalize(task);
     ::kv::ClientTaskManager::Finalize(task);
 
-    ASSERT_EQ(backend->recordedCount, 1U);
+    backend->ExpectMetrics(
+        {"kv_client_task_e2e_duration_seconds", "kv_client_load_tasks_succeeded_total",
+         "kv_client_load_task_e2e_duration_seconds", "kv_client_load_entries_succeeded_total",
+         "kv_client_load_entries_failed_total", "kv_client_load_completed_bytes_total"});
+    ASSERT_GT(backend->recordedCount, 0U);
     EXPECT_EQ(backend->recordedUpdates[0].metric->Name(), "kv_client_task_e2e_duration_seconds");
     EXPECT_GT(backend->recordedUpdates[0].value, 0.004);
     EXPECT_TRUE(task->Done());
@@ -415,7 +451,8 @@ TEST(TransportTaskMetricsTest, RecordsSubmitToCompletion)
     ::kv::TransportTaskManager manager;
     manager.NotifyCompletion(task);
 
-    ASSERT_EQ(backend->recordedCount, 1U);
+    backend->ExpectMetrics({"kv_transport_task_e2e_duration_seconds"});
+    ASSERT_GT(backend->recordedCount, 0U);
     EXPECT_EQ(backend->recordedUpdates[0].metric->Name(), "kv_transport_task_e2e_duration_seconds");
     EXPECT_GT(backend->recordedUpdates[0].value, 0.004);
     Shutdown();
@@ -443,11 +480,11 @@ TEST(TransportTaskMetricsTest, PreSendFailureDoesNotRecordSendCompletion)
 
     ::kv::TransportTaskManager manager;
     manager.NotifyCompletion(task);
-    EXPECT_EQ(backend->recordedCount, 1U);
-    if (backend->recordedCount != 0) {
-        EXPECT_EQ(backend->recordedUpdates[0].metric->Name(),
-                  "kv_transport_task_e2e_duration_seconds");
-    }
+    backend->ExpectMetrics({"kv_transport_prepare_failures_total",
+                            "kv_transport_task_e2e_duration_seconds",
+                            "kv_transport_tasks_failed_total"});
+    EXPECT_EQ(backend->Count("kv_transport_task_completion_duration_seconds"), 0U);
+    EXPECT_EQ(backend->Count("kv_transport_prepare_failures_total"), 1U);
     Shutdown();
 }
 
@@ -473,7 +510,10 @@ TEST(ClientTaskMetricsTest, UndispatchedChildDoesNotNotifySendCompletion)
     EXPECT_FALSE(sendCompleteNotified);
     EXPECT_EQ(task->remainingTransportSendTasks.load(), 1U);
     EXPECT_TRUE(task->Done());
-    EXPECT_EQ(backend->recordedCount, 1U);
+    backend->ExpectMetrics(
+        {"kv_client_task_e2e_duration_seconds", "kv_client_load_tasks_failed_total",
+         "kv_client_load_task_e2e_duration_seconds", "kv_client_load_entries_succeeded_total",
+         "kv_client_load_entries_failed_total", "kv_client_load_completed_bytes_total"});
     if (backend->recordedCount != 0) {
         EXPECT_EQ(backend->recordedUpdates[0].metric->Name(),
                   "kv_client_task_e2e_duration_seconds");

@@ -120,6 +120,7 @@ private:
 
     // Runs queued tasks until shutdown and the queue are both complete.
     void WorkerLoop();
+    metrics::ResourceCapacity queueCapacity_{metrics::Resource::ClientQueue};
 
     // Performs one register operation on the current snapshot.
     Status RegisterRegionsOnce(const std::vector<MemoryRegion>& regions,

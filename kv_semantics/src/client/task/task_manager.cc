@@ -30,6 +30,7 @@
 #include "kv_metrics/metrics.h"
 #include "logger.h"
 #include "router/router.h"
+#include "task_metrics.h"
 
 namespace kv {
 
@@ -82,9 +83,40 @@ void RecordClientTaskCompletion(ClientTask& task)
         task.enqueuedAt == std::chrono::steady_clock::time_point{}) {
         return;
     }
-    metrics::UpdateStats(
-        KV_METRIC("kv_client_task_e2e_duration_seconds"),
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - task.submittedAt).count());
+    task.inflightLease.Release();
+    const auto seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - task.submittedAt).count();
+    metrics::UpdateStats(KV_METRIC("kv_client_task_e2e_duration_seconds"), seconds);
+    RecordClientTaskOutcome(task.opType, task.finalStatus, seconds);
+    if (!metrics::IsEnabled()) { return; }
+    if (IsEntryBatchOp(task.opType)) {
+        std::size_t succeeded = 0;
+        for (const auto& status : task.entryStatus) { succeeded += status.ok(); }
+        double bytes = 0;
+        // BuildTransportTasks moves payload descriptors into the child tasks.
+        // Use original indices to correlate partial completion with the client result.
+        for (const auto& child : task.transportTasks) {
+            for (std::size_t i = 0; i < child->entries.size() && i < child->originalIndices.size();
+                 ++i) {
+                const auto original = child->originalIndices[i];
+                if (original < task.entryStatus.size() && task.entryStatus[original].ok()) {
+                    bytes += static_cast<double>(child->entries[i].buffer.region.size);
+                }
+            }
+        }
+        RecordEntryOutcome(task.opType, succeeded, task.entryStatus.size() - succeeded, bytes);
+    }
+    // Failed queries are not normal cache misses.
+    if (task.opType == AsuOpType::QUERY && task.finalStatus.ok()) {
+        std::size_t hits = 0;
+        for (auto exists : task.queryResult.exists) { hits += exists != 0; }
+        const metrics::MetricUpdate updates[] = {
+            {KV_METRIC("kv_client_query_hit_keys_total"),  static_cast<double>(hits)},
+            {KV_METRIC("kv_client_query_miss_keys_total"),
+             static_cast<double>(task.queryResult.exists.size() - hits)             },
+        };
+        metrics::UpdateStats(updates, std::size(updates));
+    }
 }
 
 }  // namespace
@@ -373,6 +405,7 @@ Status ClientTaskManager::WaitContext(const ClientTaskPtr& task, std::uint64_t w
                                         [task] { return task->Done(); });
     BuildResult(task, result);
     if (!done) {
+        metrics::UpdateStats(KV_METRIC("kv_client_wait_timeouts_total"), 1.0);
         result.status = Status::Error(
             StatusCode::TIMEOUT,
             "client task wait timeout: client_task_id=" + std::to_string(task->taskId) +

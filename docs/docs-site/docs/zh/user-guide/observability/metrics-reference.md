@@ -252,11 +252,15 @@ Mooncake 指标用于判断**数据是否由 Mooncake 提供、是否下探后�
 
 ### 1.6 ASU / KV 指标
 
-ASU 将以下 37 个 KV 指标（23 个 Counter、14 个 Histogram）接入 UCM 采集器。表中名称使用默认 `ucm:` 前缀。提交计数反映 KV API 调用及条目数量，不代表去重后的推理请求数，也不代表异步任务成功完成数。
+ASU 将以下 102 个 KV 指标（71 个 Counter、10 个 Gauge、21 个 Histogram）接入 UCM 采集器。表中名称使用默认 `ucm:` 前缀。提交计数反映 KV API 调用及条目数量，不代表去重后的推理请求数，也不代表异步任务成功完成数。
+
+Client 保留按操作的最终结果和端到端耗时；Transport 仅新增汇总失败、取消计数，沿用已有阶段耗时。条目结果与 payload 字节统计仅覆盖四种读写操作。Client 与 Transport 计数分别描述上层任务和子任务，不能相加作为请求失败总数。
+
+AsuStore 的 Load/Dump 对应 `batch_load`/`batch_store`。任务结果在完成时记录，不依赖调用 Wait；Wait 超时不代表任务完成。部分失败计为失败任务，但成功条目仍计入条目数和已完成 payload 字节数。查询 miss 是有效条目结果，失败查询不增加普通 miss。各失败阶段计数描述不同层级，不应相加作为任务失败总数。
 
 生成器的 `--check` 会校验英文、中文和旧版参考文档中 KV 表格的名称、类型分组、重复、遗漏和数量。说明文字与单位仍由人工维护；`--sync-ucm` 不会重写这些表格。
 
-**单位：**所有 `kv_*_duration_seconds` 的观测值和桶边界均使用秒；已有的 `*_duration_ms`、`save_duration` 和 `save_completion_wait_duration` 使用毫秒。看板显示 KV 耗时的毫秒值时，将均值或分位数乘以 `1000`，不要直接混合秒与毫秒数据。
+**单位：**所有 `kv_*_duration_seconds` 和 `asu_*_duration_seconds` 的观测值和桶边界均使用秒；已有的 `*_duration_ms`、`save_duration` 和 `save_completion_wait_duration` 使用毫秒。看板显示 KV 耗时的毫秒值时，将均值或分位数乘以 `1000`，不要直接混合秒与毫秒数据。
 
 两个 `kv_transport_node_task_*` 直方图在 standalone 模式下保留 `node_id`。UCM adapter 将其观测值跨节点聚合，不暴露该节点标签；其他导出标签仍按各自路径生效。
 
@@ -271,6 +275,10 @@ ASU backend 安装仅由 store 级 `ucm_connectors[].ucm_connector_config.enable
 指标安装失败时记录限速的 UCM ERROR 日志，Store 继续初始化，但不安装 UCM 指标后端；已有 backend 保持不变。安装失败不会被永久缓存，后续 Store `Setup()` 可以重试。所有指标写入线程停止且 `kv::metrics::Shutdown()` 完成后，后续 setup 可以重新安装保留的 UCM adapter。仍不支持并发执行 shutdown 与指标写入，也不支持在存在活跃缓存绑定时切换 backend 类型。不兼容的缓存绑定和失败的指标更新会被跳过，并持续通过限速 ERROR 日志报告。adapter 捕获安装和更新异常；日志直接使用 UCM 日志框架，不再提供独立的日志失败兜底。
 
 adapter 使用现有 UCM `UpdateStats()` 接口。采集器尚未初始化或指标尚未注册时，采样会被静默跳过。后续完成初始化和注册后，同一个缓存指标可以恢复采样；此前跳过的样本不会补发。请使用 `--ucm-config` 校验自定义目录的完整性。
+
+资源 Gauge 为进程级聚合值，每秒采样一次。原生 reporter 在 backend 成功安装后启动，在 backend shutdown 前停止；不检查 UCM 指标注册状态。后续注册的 Gauge 会在之后的周期采样中生效，无需新的请求。关闭导出或未配置资源 Gauge 不会停止已运行的资源采样和记账。reporter 启动失败会记录日志，不影响已安装的 backend；不提供独立的自动重试。
+
+这些 Gauge 是采样值，不是峰值。调用方超时后若放弃 client task，其在途记账在上下文销毁时结束，此时 transport 仍可能执行。这些指标描述软件路径，不代表 ASU 设备利用率或硬件耗时。
 
 #### Counters
 
@@ -299,6 +307,69 @@ adapter 使用现有 UCM `UpdateStats()` 接口。采集器尚未初始化或指
 | `ucm:kv_transport_task_completion_timeouts_total` | 次 | KV transport 任务完成等待超时次数 |
 | `ucm:kv_transport_task_io_timeouts_total` | 次 | KV transport 子批次 IO 超时次数 |
 | `ucm:kv_transport_task_connection_errors_total` | 次 | KV transport 连接错误次数 |
+| `ucm:kv_client_query_tasks_succeeded_total` | 个 / 次 | KV client query 任务最终成功数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_query_tasks_failed_total` | 个 / 次 | KV client query 任务最终失败数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_query_tasks_canceled_total` | 个 / 次 | KV client query 任务最终取消数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_load_tasks_succeeded_total` | 个 / 次 | KV client load 任务最终成功数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_load_tasks_failed_total` | 个 / 次 | KV client load 任务最终失败数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_load_tasks_canceled_total` | 个 / 次 | KV client load 任务最终取消数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_store_tasks_succeeded_total` | 个 / 次 | KV client store 任务最终成功数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_store_tasks_failed_total` | 个 / 次 | KV client store 任务最终失败数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_store_tasks_canceled_total` | 个 / 次 | KV client store 任务最终取消数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_batch_load_tasks_succeeded_total` | 个 / 次 | KV client batch_load 任务最终成功数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_batch_load_tasks_failed_total` | 个 / 次 | KV client batch_load 任务最终失败数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_batch_load_tasks_canceled_total` | 个 / 次 | KV client batch_load 任务最终取消数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_batch_store_tasks_succeeded_total` | 个 / 次 | KV client batch_store 任务最终成功数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_batch_store_tasks_failed_total` | 个 / 次 | KV client batch_store 任务最终失败数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_batch_store_tasks_canceled_total` | 个 / 次 | KV client batch_store 任务最终取消数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_delete_tasks_succeeded_total` | 个 / 次 | KV client delete 任务最终成功数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_delete_tasks_failed_total` | 个 / 次 | KV client delete 任务最终失败数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_delete_tasks_canceled_total` | 个 / 次 | KV client delete 任务最终取消数；每个任务仅记录一次，不按提交或 wait 调用计数 |
+| `ucm:kv_client_load_entries_succeeded_total` | 键 / 条目 | 已完成的 KV client load 任务中最终成功的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_load_entries_failed_total` | 键 / 条目 | 已完成的 KV client load 任务中最终失败的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_load_submitted_bytes_total` | 字节 | KV client load 已接受提交的有效载荷字节数 |
+| `ucm:kv_client_load_completed_bytes_total` | 字节 | KV client load 成功完成的有效载荷字节数；部分失败时按条目统计 |
+| `ucm:kv_client_store_entries_succeeded_total` | 键 / 条目 | 已完成的 KV client store 任务中最终成功的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_store_entries_failed_total` | 键 / 条目 | 已完成的 KV client store 任务中最终失败的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_store_submitted_bytes_total` | 字节 | KV client store 已接受提交的有效载荷字节数 |
+| `ucm:kv_client_store_completed_bytes_total` | 字节 | KV client store 成功完成的有效载荷字节数；部分失败时按条目统计 |
+| `ucm:kv_client_batch_load_entries_succeeded_total` | 键 / 条目 | 已完成的 KV client batch_load 任务中最终成功的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_batch_load_entries_failed_total` | 键 / 条目 | 已完成的 KV client batch_load 任务中最终失败的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_batch_load_submitted_bytes_total` | 字节 | KV client batch_load 已接受提交的有效载荷字节数 |
+| `ucm:kv_client_batch_load_completed_bytes_total` | 字节 | KV client batch_load 成功完成的有效载荷字节数；部分失败时按条目统计 |
+| `ucm:kv_client_batch_store_entries_succeeded_total` | 键 / 条目 | 已完成的 KV client batch_store 任务中最终成功的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_batch_store_entries_failed_total` | 键 / 条目 | 已完成的 KV client batch_store 任务中最终失败的条目数；query 未命中属于有效结果 |
+| `ucm:kv_client_batch_store_submitted_bytes_total` | 字节 | KV client batch_store 已接受提交的有效载荷字节数 |
+| `ucm:kv_client_batch_store_completed_bytes_total` | 字节 | KV client batch_store 成功完成的有效载荷字节数；部分失败时按条目统计 |
+| `ucm:kv_client_prerequisite_errors_total` | 个 / 次 | 前置事件等待失败次数 |
+| `ucm:kv_client_wait_timeouts_total` | 个 / 次 | 客户端 wait 截止时间到期次数，不包含传输执行超时 |
+| `ucm:kv_client_queue_full_total` | 个 / 次 | 客户端队列已满导致的提交拒绝次数 |
+| `ucm:kv_transport_queue_full_total` | 个 / 次 | 传输队列已满导致的提交拒绝次数 |
+| `ucm:kv_transport_send_buffer_exhaustions_total` | 个 / 次 | 发送缓冲区无空闲槽位导致的分配失败次数 |
+| `ucm:kv_transport_flag_buffer_exhaustions_total` | 个 / 次 | 标志缓冲区无空闲槽位导致的分配失败次数 |
+| `ucm:kv_transport_send_failed_subbatches_total` | 个 / 次 | provider Send 拒绝或返回结果数量不合法的子批次数 |
+| `ucm:kv_transport_prepare_failures_total` | 个 / 次 | 在连接选择之前，请求准备失败的传输任务数 |
+| `ucm:kv_transport_response_parse_errors_total` | 个 / 次 | 响应无效的子批次数 |
+| `ucm:kv_client_query_hit_keys_total` | 键 / 条目 | 成功完成的 query 任务中命中的键数 |
+| `ucm:kv_client_query_miss_keys_total` | 键 / 条目 | 成功完成的 query 任务中未命中的键数，不包含失败查询 |
+| `ucm:asu_lookup_timeout_fallback_total` | 个 / 次 | ASU lookup 超时后降级为缓存未命中的次数 |
+| `ucm:kv_transport_tasks_failed_total` | 次 | 所有操作的 transport 最终失败任务数，不含取消；每任务记录一次 |
+| `ucm:kv_transport_tasks_canceled_total` | 次 | 所有操作的 transport 最终取消任务数；每任务记录一次 |
+
+#### Gauges
+
+| 指标 | 单位 | 含义 |
+| --- | --- | --- |
+| `ucm:kv_client_queue_depth` | 个 / 次 | 进程内所有 KV client 的队列深度总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_queue_depth` | 个 / 次 | 进程内所有 KV transport 的队列深度总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_client_queue_capacity` | 个 / 次 | 进程内所有 KV client 的队列容量总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_queue_capacity` | 个 / 次 | 进程内所有 KV transport 的队列容量总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_client_tasks_inflight` | 个 / 次 | 进程内所有 KV client 的在途任务数总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_tasks_inflight` | 个 / 次 | 进程内所有 KV transport 的在途任务数总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_send_buffer_slots_used` | 槽位 | 进程内所有 KV transport 的发送缓冲区已用槽位数总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_send_buffer_slots_capacity` | 槽位 | 进程内所有 KV transport 的发送缓冲区槽位容量总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_flag_buffer_slots_used` | 槽位 | 进程内所有 KV transport 的标志缓冲区已用槽位数总和，由单个上报线程每秒采样一次 |
+| `ucm:kv_transport_flag_buffer_slots_capacity` | 槽位 | 进程内所有 KV transport 的标志缓冲区槽位容量总和，由单个上报线程每秒采样一次 |
 
 #### Histograms
 
@@ -318,6 +389,13 @@ adapter 使用现有 UCM `UpdateStats()` 接口。采集器尚未初始化或指
 | `ucm:kv_transport_node_task_send_duration_seconds` | 秒 | KV transport 节点任务发送耗时；standalone 按 node_id 区分 |
 | `ucm:kv_transport_node_task_completion_duration_seconds` | 秒 | KV transport 节点任务完成耗时；standalone 按 node_id 区分 |
 | `ucm:kv_transport_task_e2e_duration_seconds` | 秒 | KV transport 任务从提交到完成的端到端耗时 |
+| `ucm:kv_client_query_task_e2e_duration_seconds` | 秒 | KV client query 从提交到完成的耗时，包含失败任务 |
+| `ucm:kv_client_load_task_e2e_duration_seconds` | 秒 | KV client load 从提交到完成的耗时，包含失败任务 |
+| `ucm:kv_client_store_task_e2e_duration_seconds` | 秒 | KV client store 从提交到完成的耗时，包含失败任务 |
+| `ucm:kv_client_batch_load_task_e2e_duration_seconds` | 秒 | KV client batch_load 从提交到完成的耗时，包含失败任务 |
+| `ucm:kv_client_batch_store_task_e2e_duration_seconds` | 秒 | KV client batch_store 从提交到完成的耗时，包含失败任务 |
+| `ucm:kv_client_delete_task_e2e_duration_seconds` | 秒 | KV client delete 从提交到完成的耗时，包含失败任务 |
+| `ucm:kv_client_prerequisite_wait_duration_seconds` | 秒 | 等待前置事件的耗时 |
 
 KV 定义同步与自定义目录校验见[指标开发](../../developer-guide/add-metrics.md)。
 

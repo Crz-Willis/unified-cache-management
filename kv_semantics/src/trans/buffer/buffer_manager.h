@@ -26,8 +26,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include "index_pool.h"
+#include "kv_metrics/resource_metrics.h"
 #include "kv_types.h"
 #include "trans_provider.h"
 
@@ -46,6 +48,14 @@ struct ScatterGatherEntry {
 };
 
 class BufferManager {
+public:
+    void SetMetricResource(metrics::Resource resource) { metricResource_ = resource; }
+
+private:
+    std::optional<metrics::Resource> metricResource_;
+    std::atomic<std::int64_t> metricUsed_{0};
+    std::int64_t metricCapacity_{0};
+
 public:
     BufferManager() = default;
     ~BufferManager();
